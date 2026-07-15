@@ -243,13 +243,15 @@
 
         <ol class="steps" id="steps">
           <li><span class="n">1</span><span>Plug the programmer stick into a USB port on this computer.</span></li>
-          <li><span class="n">2</span><span>Put it in update mode: <b>double-tap the reset button</b>. The light on the stick will start to <b>pulse</b>.</span></li>
-          <li><span class="n">3</span><span>Click below, then pick the stick from the browser’s list to start the update.</span></li>
+          <li><span class="n">2</span><span>Click <b>Start update</b> and pick the stick. It will switch itself into update mode — no buttons to press.</span></li>
+          <li><span class="n">3</span><span>When asked, pick the stick <b>one more time</b> to send the firmware. That second pick is the browser’s way of confirming the device.</span></li>
         </ol>
 
         <div class="actions">
-          <button class="primary" id="go">Select stick &amp; update</button>
+          <button class="primary" id="reset">Start update</button>
+          <button class="primary" id="flash" style="display:none;">Continue &amp; send firmware</button>
           <button class="ghost" id="again" style="display:none;">Update another stick</button>
+          <button class="ghost" id="over" style="display:none;">Start over</button>
         </div>
         <p class="hint" id="hint">Runs entirely in your browser — nothing is installed. Use Chrome or Edge on a computer.</p>
       </div>
@@ -266,8 +268,9 @@
         <summary><span class="chev">▸</span> Technical log</summary>
         <div class="logwrap"><pre id="log"><span class="t">[ready]</span> waiting for device…</pre></div>
         <p class="hint" id="advanced">
-          Light not pulsing? Some sticks enter update mode from a single reset tap, or by unplugging and
-          replugging while double-tapping. The stick must show a <b>pulsing</b> light before you start.
+          Why pick the stick twice? Switching to update mode makes the stick reconnect as a new USB
+          device, and the browser asks you to confirm that new device once before it can send firmware.
+          If the second list shows more than one option, choose the one that appeared <b>after</b> the reset.
         </p>
       </details>
     </div>
@@ -275,7 +278,7 @@
 
   <script type="module">
     import { FW_META, FW_BIN_B64, FW_DAT_B64 } from "./firmware.js";
-    import { runDfu, b64ToBytes } from "./dfu.js";
+    import { runDfu, touch1200, b64ToBytes } from "./dfu.js";
 
     const $ = (id) => document.getElementById(id);
     const body = document.body;
@@ -312,35 +315,91 @@
       pre.parentElement.scrollTop = pre.parentElement.scrollHeight;
     }
 
+    const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
+
+    function goIdle() {
+      setState("idle");
+      setProgress(0);
+      setHead("Ready to update", "Plug in the stick, then start.");
+      $("reset").disabled = false;
+      $("reset").textContent = "Start update";
+      show("reset", true);
+      show("flash", false);
+      show("again", false);
+      show("over", false);
+    }
+
     let busy = false;
 
-    async function flash() {
-      if (busy) return;
-      if (!("serial" in navigator)) return;
+    // Phase 1: pick the stick and reset it into update mode via the 1200 touch.
+    async function startReset() {
+      if (busy || !("serial" in navigator)) return;
       busy = true;
-      $("go").disabled = true;
-      $("again").style.display = "none";
-      setProgress(0);
+      $("reset").disabled = true;
 
       let port;
       try {
         port = await navigator.serial.requestPort();
-      } catch (e) {
-        // user dismissed the chooser
+      } catch {
+        $("reset").disabled = false;   // chooser dismissed
         busy = false;
-        $("go").disabled = false;
         return;
       }
 
       try {
         setState("wait");
-        setHead("Connecting…", "Opening the stick.");
-        log("Opening serial port at 115200 baud…");
-        await port.open({ baudRate: 115200 });
+        setHead("Switching to update mode", "Resetting the stick…");
+        log("Selected device. Sending 1200-baud reset…");
+        await touch1200(port);
+        log("Reset sent. Waiting for the stick to reconnect in update mode…");
 
+        // Give the OS time to re-enumerate the bootloader as a new USB device.
+        let left = 4;
+        setHead("Switching to update mode", `Almost ready… ${left}s`);
+        await new Promise((resolve) => {
+          const t = setInterval(() => {
+            left -= 1;
+            if (left <= 0) { clearInterval(t); resolve(); }
+            else setHead("Switching to update mode", `Almost ready… ${left}s`);
+          }, 1000);
+        });
+
+        setHead("Ready to send firmware", "Click Continue, then pick the stick again.");
+        log("Ready. Click Continue and choose the stick from the list.");
+        show("reset", false);
+        show("flash", true);
+        show("over", true);
+      } catch (err) {
+        setState("error");
+        setHead("Couldn’t switch to update mode", err.message || String(err), "err");
+        log("✗ " + (err.message || err));
+        show("over", true);
+      } finally {
+        busy = false;
+      }
+    }
+
+    // Phase 2: pick the (now re-enumerated) bootloader and send the firmware.
+    async function startFlash() {
+      if (busy || !("serial" in navigator)) return;
+      busy = true;
+      $("flash").disabled = true;
+
+      let port;
+      try {
+        port = await navigator.serial.requestPort();
+      } catch {
+        $("flash").disabled = false;   // chooser dismissed
+        busy = false;
+        return;
+      }
+
+      try {
         setState("run");
+        setProgress(0);
         setHead("Updating firmware", "Do not unplug the stick.");
-        log(`Starting update: ${FW_META.binFile} (${FW_META.appSize.toLocaleString()} bytes).`);
+        log(`Opening at 115200 baud. Sending ${FW_META.binFile} (${FW_META.appSize.toLocaleString()} bytes).`);
+        await port.open({ baudRate: 115200 });
 
         await runDfu(port, firmwareBin, initPacket, {
           onProgress: setProgress,
@@ -352,29 +411,26 @@
         setProgress(1);
         setHead("Update complete", "You can safely unplug the stick.", "ok");
         log("✓ Firmware updated successfully.");
-        $("again").style.display = "";
+        show("flash", false);
+        show("over", false);
+        show("again", true);
       } catch (err) {
         setState("error");
         setHead("Update failed", err.message || String(err), "err");
         log("✗ " + (err.message || err));
         try { await port.close(); } catch (_) {}
-        $("go").disabled = false;
-        $("go").textContent = "Try again";
-        $("again").style.display = "none";
+        $("flash").disabled = false;
+        $("flash").textContent = "Try picking the stick again";
+        show("over", true);
       } finally {
         busy = false;
       }
     }
 
-    $("go").addEventListener("click", flash);
-    $("again").addEventListener("click", () => {
-      setState("idle");
-      setProgress(0);
-      setHead("Ready to update", "Put the next stick in update mode, then click below.");
-      $("go").disabled = false;
-      $("go").textContent = "Select stick & update";
-      $("again").style.display = "none";
-    });
+    $("reset").addEventListener("click", startReset);
+    $("flash").addEventListener("click", startFlash);
+    $("over").addEventListener("click", goIdle);
+    $("again").addEventListener("click", goIdle);
   </script>
 </body>
 </html>

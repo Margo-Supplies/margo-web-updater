@@ -183,8 +183,9 @@ async function runDfu(port, firmwareBin, initPacket, hooks = {}) {
     ...int32le(0),
     ...int32le(appSize),
   ];
+  let ackTotal = 0;
   await link.write(b.build(frame));
-  await link.readAck(2000);
+  if (await link.readAck(2000)) ackTotal++;
 
   // Device erases flash after start; wait accordingly.
   const eraseWaitMs = Math.max(500, (Math.floor(totalSize / FLASH_PAGE_SIZE) + 1) * FLASH_PAGE_ERASE_TIME * 1000);
@@ -195,7 +196,7 @@ async function runDfu(port, firmwareBin, initPacket, hooks = {}) {
   log("Sending init packet…");
   frame = [...int32le(DFU_INIT), ...initPacket, ...int16le(0x0000)];
   await link.write(b.build(frame));
-  await link.readAck(2000);
+  if (await link.readAck(2000)) ackTotal++;
 
   // 3) Firmware image in 512-byte data packets
   status("Writing firmware");
@@ -207,11 +208,18 @@ async function runDfu(port, firmwareBin, initPacket, hooks = {}) {
     frame = [...int32le(DFU_DATA), ...slice];
     await link.write(b.build(frame));
     const acked = await link.readAck(3000);
+    if (acked) ackTotal++;
+    // Nothing has acknowledged anything by the 4th packet → this port is almost
+    // certainly still running the app, not the bootloader.
+    if (idx >= 3 && ackTotal === 0) {
+      await link.close();
+      throw new Error("The stick didn’t respond to any update commands, so it isn’t in update mode. Start over and let it switch modes before continuing.");
+    }
     if (!acked) {
       misses++;
       if (misses > 5) {
         await link.close();
-        throw new Error("The device stopped responding during the update. Unplug it, plug it back in, put it in update mode, and try again.");
+        throw new Error("The stick stopped responding partway through the update. Unplug it, plug it back in, and run the update again from the start.");
       }
     } else {
       misses = 0;
@@ -243,14 +251,15 @@ async function runDfu(port, firmwareBin, initPacket, hooks = {}) {
   await sleep(activateMs);
 }
 
-// Open a port briefly at 1200 baud to reset the board into update mode.
+// Open a port briefly at 1200 baud, toggling DTR, to reset an Adafruit nRF52
+// board out of the running app and into its DFU bootloader. This is the same
+// "1200-baud touch" arduino-cli performs with `-t 1200`.
 async function touch1200(port) {
   await port.open({ baudRate: 1200 });
-  await sleep(120);
-  try {
-    await port.setSignals({ dataTerminalReady: false });
-  } catch (_) {}
-  await sleep(120);
+  try { await port.setSignals({ dataTerminalReady: true }); } catch (_) {}
+  await sleep(150);
+  try { await port.setSignals({ dataTerminalReady: false }); } catch (_) {}
+  await sleep(150);
   await port.close();
 }
 
