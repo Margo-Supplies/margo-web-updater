@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Margo Programmer Stick — Firmware Update</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #131e33;
+    --panel-2: #0f1830;
+    --line: #24314e;
+    --muted: #7e90ae;
+    --text: #e8eef9;
+    --amber: #f6b03c;
+    --teal: #35c6c0;
+    --green: #46d08a;
+    --red: #f16a6a;
+    --ring-track: #1d2a45;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(1200px 600px at 50% -10%, rgba(53, 198, 192, 0.08), transparent 60%),
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: auto, 44px 44px, 44px 44px;
+    background-position: center, center, center;
+    color: var(--text);
+    font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+    min-height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 28px 18px;
+  }
+
+  .console {
+    width: 100%;
+    max-width: 720px;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.01);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .brand .glyph {
+    width: 26px; height: 26px; flex: none;
+    border-radius: 6px;
+    background: conic-gradient(from 210deg, var(--teal), var(--amber), var(--teal));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
+  }
+  .brand .name {
+    font-weight: 600; font-size: 15px; letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .brand .sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .fwchip {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; white-space: nowrap;
+  }
+  .fwchip b { color: var(--text); font-weight: 600; }
+
+  .stage {
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    gap: 26px;
+    padding: 30px 24px;
+    align-items: center;
+  }
+
+  /* --- status light + progress ring (the signature) --- */
+  .indicator { position: relative; width: 168px; height: 168px; margin: 0 auto; }
+  .ring { transform: rotate(-90deg); width: 168px; height: 168px; }
+  .ring .track { stroke: var(--ring-track); }
+  .ring .fill {
+    stroke: var(--teal);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.25s linear, stroke 0.4s ease;
+  }
+  .led {
+    position: absolute; inset: 32px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, rgba(255,255,255,0.18), transparent 45%), var(--led-color, #35507a);
+    --led-color: #2a3f63;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 34px -6px var(--led-glow, transparent);
+    display: grid; place-items: center;
+    transition: background 0.4s ease, box-shadow 0.4s ease;
+  }
+  .led .pct {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 26px; font-weight: 600; letter-spacing: -0.02em;
+    opacity: 0; transition: opacity 0.3s ease;
+  }
+
+  /* states */
+  .state-idle    .led { --led-color: #2a3f63; --led-glow: transparent; }
+  .state-wait    .led { --led-color: var(--amber); --led-glow: var(--amber); animation: breathe 2.4s ease-in-out infinite; }
+  .state-run     .led { --led-color: var(--teal);  --led-glow: var(--teal); }
+  .state-run     .led .pct { opacity: 1; }
+  .state-run     .ring .fill { stroke: var(--teal); }
+  .state-done    .led { --led-color: var(--green); --led-glow: var(--green); }
+  .state-done    .ring .fill { stroke: var(--green); }
+  .state-error   .led { --led-color: var(--red);   --led-glow: var(--red); }
+  .state-error   .ring .fill { stroke: var(--red); }
+
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 12px -4px var(--amber); }
+    50%      { box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 46px 2px var(--amber); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .state-wait .led { animation: none; }
+  }
+
+  /* --- right column --- */
+  .headline { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; }
+  .statusline { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--muted); margin: 0 0 18px; min-height: 18px; }
+  .statusline.err { color: var(--red); }
+  .statusline.ok  { color: var(--green); }
+
+  .steps { list-style: none; margin: 0 0 22px; padding: 0; display: grid; gap: 10px; }
+  .steps li { display: flex; gap: 11px; align-items: flex-start; font-size: 14px; color: var(--muted); line-height: 1.35; }
+  .steps li .n {
+    flex: none; width: 20px; height: 20px; border-radius: 50%;
+    border: 1px solid var(--line); color: var(--muted);
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    display: grid; place-items: center; margin-top: 1px;
+  }
+  .steps li b { color: var(--text); font-weight: 500; }
+  .steps li kbd {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 5px; padding: 1px 6px; color: var(--text);
+  }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  button.primary {
+    appearance: none; border: 0; cursor: pointer;
+    font-family: inherit; font-weight: 600; font-size: 15px; letter-spacing: 0.01em;
+    color: #07220f; background: linear-gradient(180deg, #5be0a0, var(--green));
+    padding: 13px 20px; border-radius: 10px;
+    box-shadow: 0 10px 24px -12px var(--green);
+    transition: transform 0.08s ease, filter 0.2s ease, opacity 0.2s ease;
+  }
+  button.primary:hover { filter: brightness(1.05); }
+  button.primary:active { transform: translateY(1px); }
+  button.primary:disabled { cursor: default; opacity: 0.45; filter: grayscale(0.3); box-shadow: none; }
+  button.primary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
+  button.ghost {
+    appearance: none; cursor: pointer; font-family: inherit; font-size: 13px;
+    color: var(--text); background: transparent;
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  button.ghost:hover { border-color: var(--muted); background: rgba(255,255,255,0.02); }
+  button.ghost:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+
+  .foot { border-top: 1px solid var(--line); padding: 14px 20px 18px; }
+  .foot details summary {
+    cursor: pointer; list-style: none; color: var(--muted); font-size: 12.5px;
+    display: flex; align-items: center; gap: 8px; user-select: none;
+  }
+  .foot details summary::-webkit-details-marker { display: none; }
+  .foot details summary .chev { transition: transform 0.2s ease; }
+  .foot details[open] summary .chev { transform: rotate(90deg); }
+  .logwrap {
+    margin-top: 12px; background: #08101f; border: 1px solid var(--line); border-radius: 9px;
+    max-height: 190px; overflow: auto;
+  }
+  #log {
+    margin: 0; padding: 12px 14px;
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.6;
+    color: #9fb2d4; white-space: pre-wrap; word-break: break-word;
+  }
+  #log .t { color: #4d6188; }
+  .hint { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+  .hint a { color: var(--teal); }
+
+  .unsupported {
+    display: none; margin: 0 24px 26px; padding: 14px 16px;
+    border: 1px solid var(--red); border-radius: 10px;
+    background: rgba(241,106,106,0.06); color: #ffd9d9; font-size: 13.5px; line-height: 1.5;
+  }
+  body.no-serial .stage, body.no-serial .foot { display: none; }
+  body.no-serial .unsupported { display: block; }
+
+  @media (max-width: 560px) {
+    .stage { grid-template-columns: 1fr; gap: 20px; padding: 26px 18px; }
+    .indicator { width: 150px; height: 150px; }
+    .ring, .led { width: 150px; height: 150px; }
+    .led { inset: 28px; }
+  }
+</style>
+</head>
+<body class="state-idle">
+  <main class="console" role="application" aria-label="Firmware updater">
+    <div class="topbar">
+      <div class="brand">
+        <span class="glyph" aria-hidden="true"></span>
+        <span class="name">Margo Programmer Stick
+          <span class="sub">Firmware Updater</span>
+        </span>
+      </div>
+      <span class="fwchip" id="fwchip">firmware <b>—</b></span>
+    </div>
+
+    <section class="stage">
+      <div class="indicator" id="indicator" aria-hidden="true">
+        <svg class="ring" viewBox="0 0 168 168">
+          <circle class="track" cx="84" cy="84" r="76" fill="none" stroke-width="8" />
+          <circle class="fill" id="ringFill" cx="84" cy="84" r="76" fill="none" stroke-width="8"
+                  stroke-dasharray="477.5" stroke-dashoffset="477.5" />
+        </svg>
+        <div class="led"><span class="pct" id="pct">0%</span></div>
+      </div>
+
+      <div class="panel-right">
+        <h1 class="headline" id="headline">Ready to update</h1>
+        <p class="statusline" id="statusline">Plug in the stick to begin.</p>
+
+        <ol class="steps" id="steps">
+          <li><span class="n">1</span><span>Plug the programmer stick into a USB port on this computer.</span></li>
+          <li><span class="n">2</span><span>Put it in update mode: <b>double-tap the reset button</b>. The light on the stick will start to <b>pulse</b>.</span></li>
+          <li><span class="n">3</span><span>Click below, then pick the stick from the browser’s list to start the update.</span></li>
+        </ol>
+
+        <div class="actions">
+          <button class="primary" id="go">Select stick &amp; update</button>
+          <button class="ghost" id="again" style="display:none;">Update another stick</button>
+        </div>
+        <p class="hint" id="hint">Runs entirely in your browser — nothing is installed. Use Chrome or Edge on a computer.</p>
+      </div>
+    </section>
+
+    <div class="unsupported" id="unsupported">
+      This updater needs the Web Serial feature, which isn’t available in this browser.
+      Please open this page in <b>Google Chrome</b> or <b>Microsoft Edge</b> on a desktop or laptop
+      (Web Serial isn’t supported in Safari, Firefox, or on phones/tablets).
+    </div>
+
+    <div class="foot">
+      <details>
+        <summary><span class="chev">▸</span> Technical log</summary>
+        <div class="logwrap"><pre id="log"><span class="t">[ready]</span> waiting for device…</pre></div>
+        <p class="hint" id="advanced">
+          Light not pulsing? Some sticks enter update mode from a single reset tap, or by unplugging and
+          replugging while double-tapping. The stick must show a <b>pulsing</b> light before you start.
+        </p>
+      </details>
+    </div>
+  </main>
+
+  <script type="module">
+    import { FW_META, FW_BIN_B64, FW_DAT_B64 } from "./firmware.js";
+    import { runDfu, b64ToBytes } from "./dfu.js";
+
+    const $ = (id) => document.getElementById(id);
+    const body = document.body;
+    const RING_LEN = 2 * Math.PI * 76; // 477.5
+
+    // No Web Serial → show guidance, stop.
+    if (!("serial" in navigator)) {
+      body.classList.add("no-serial");
+    }
+
+    // Firmware chip
+    $("fwchip").innerHTML = `firmware <b>${FW_META.binFile.replace(/\.ino\.bin$/, "")}</b> · ${(FW_META.appSize / 1024).toFixed(0)} KB`;
+
+    const firmwareBin = b64ToBytes(FW_BIN_B64);
+    const initPacket = b64ToBytes(FW_DAT_B64);
+
+    function setState(s) {
+      body.className = `state-${s}`;
+    }
+    function setHead(title, status, kind = "") {
+      $("headline").textContent = title;
+      const el = $("statusline");
+      el.textContent = status;
+      el.className = "statusline" + (kind ? " " + kind : "");
+    }
+    function setProgress(frac) {
+      $("ringFill").setAttribute("stroke-dashoffset", String(RING_LEN * (1 - frac)));
+      $("pct").textContent = Math.round(frac * 100) + "%";
+    }
+    function log(msg) {
+      const pre = $("log");
+      const t = new Date().toLocaleTimeString([], { hour12: false });
+      pre.insertAdjacentHTML("beforeend", `\n<span class="t">[${t}]</span> ${msg}`);
+      pre.parentElement.scrollTop = pre.parentElement.scrollHeight;
+    }
+
+    let busy = false;
+
+    async function flash() {
+      if (busy) return;
+      if (!("serial" in navigator)) return;
+      busy = true;
+      $("go").disabled = true;
+      $("again").style.display = "none";
+      setProgress(0);
+
+      let port;
+      try {
+        port = await navigator.serial.requestPort();
+      } catch (e) {
+        // user dismissed the chooser
+        busy = false;
+        $("go").disabled = false;
+        return;
+      }
+
+      try {
+        setState("wait");
+        setHead("Connecting…", "Opening the stick.");
+        log("Opening serial port at 115200 baud…");
+        await port.open({ baudRate: 115200 });
+
+        setState("run");
+        setHead("Updating firmware", "Do not unplug the stick.");
+        log(`Starting update: ${FW_META.binFile} (${FW_META.appSize.toLocaleString()} bytes).`);
+
+        await runDfu(port, firmwareBin, initPacket, {
+          onProgress: setProgress,
+          onStatus: (s) => { $("headline").textContent = s === "Writing firmware" ? "Updating firmware" : s; },
+          onLog: log,
+        });
+
+        setState("done");
+        setProgress(1);
+        setHead("Update complete", "You can safely unplug the stick.", "ok");
+        log("✓ Firmware updated successfully.");
+        $("again").style.display = "";
+      } catch (err) {
+        setState("error");
+        setHead("Update failed", err.message || String(err), "err");
+        log("✗ " + (err.message || err));
+        try { await port.close(); } catch (_) {}
+        $("go").disabled = false;
+        $("go").textContent = "Try again";
+        $("again").style.display = "none";
+      } finally {
+        busy = false;
+      }
+    }
+
+    $("go").addEventListener("click", flash);
+    $("again").addEventListener("click", () => {
+      setState("idle");
+      setProgress(0);
+      setHead("Ready to update", "Put the next stick in update mode, then click below.");
+      $("go").disabled = false;
+      $("go").textContent = "Select stick & update";
+      $("again").style.display = "none";
+    });
+  </script>
+</body>
+</html>
