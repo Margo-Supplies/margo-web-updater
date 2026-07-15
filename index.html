@@ -66,8 +66,7 @@
   .brand .glyph {
     width: 26px; height: 26px; flex: none;
     border-radius: 6px;
-    background: conic-gradient(from 210deg, var(--teal), var(--amber), var(--teal));
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
+    object-fit: contain;
   }
   .brand .name {
     font-weight: 600; font-size: 15px; letter-spacing: 0.02em;
@@ -219,7 +218,7 @@
   <main class="console" role="application" aria-label="Firmware updater">
     <div class="topbar">
       <div class="brand">
-        <span class="glyph" aria-hidden="true"></span>
+        <img class="glyph" src="logo.svg" alt="Margo logo" />
         <span class="name">Margo Programmer Stick
           <span class="sub">Firmware Updater</span>
         </span>
