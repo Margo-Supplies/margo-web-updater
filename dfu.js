@@ -263,4 +263,4 @@ async function touch1200(port) {
   await port.close();
 }
 
-export { runDfu, touch1200, b64ToBytes };
+export { runDfu, touch1200, b64ToBytes, calcCrc16 };

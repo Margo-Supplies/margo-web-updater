@@ -1,0 +1,38 @@
+{
+  "generated": "2026-07-21 20:44 UTC",
+  "product": "Margo Programmer Stick",
+  "firmwares": [
+    {
+      "id": "stick",
+      "label": "Programmer Stick (recommended)",
+      "note": "The standard firmware for customer programmer sticks.",
+      "default": true,
+      "warn": false,
+      "bin": "firmware/stick/app.bin",
+      "dat": "firmware/stick/app.dat",
+      "size": 172496,
+      "crc16": 4440,
+      "deviceType": 82,
+      "softDeviceReq": [
+        182
+      ],
+      "source": "MargoProgrammerStick.zip"
+    },
+    {
+      "id": "dev",
+      "label": "Developer build \u2014 internal use",
+      "note": "Unreleased build for internal testing. Not for customer units.",
+      "default": false,
+      "warn": true,
+      "bin": "firmware/dev/app.bin",
+      "dat": "firmware/dev/app.dat",
+      "size": 172720,
+      "crc16": 12335,
+      "deviceType": 82,
+      "softDeviceReq": [
+        182
+      ],
+      "source": "nrf-cannon-programmer_ino.zip"
+    }
+  ]
+}

@@ -139,6 +139,37 @@
   .statusline.err { color: var(--red); }
   .statusline.ok  { color: var(--green); }
 
+  /* --- firmware picker --- */
+  .picker { margin: 0 0 20px; }
+  .picker label {
+    display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 7px;
+  }
+  .selectwrap { position: relative; }
+  .selectwrap .caret {
+    position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none; font-size: 12px;
+  }
+  #fwselect {
+    appearance: none; -webkit-appearance: none;
+    width: 100%; cursor: pointer;
+    font-family: inherit; font-size: 14.5px; font-weight: 500; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 38px 12px 14px;
+    transition: border-color 0.2s ease;
+  }
+  #fwselect:hover { border-color: var(--muted); }
+  #fwselect:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  #fwselect:disabled { opacity: 0.5; cursor: default; }
+  #fwselect option { background: var(--panel-2); color: var(--text); }
+  .picker.warn #fwselect { border-color: var(--amber); }
+  .picknote {
+    margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted);
+    display: flex; gap: 7px; align-items: flex-start;
+  }
+  .picker.warn .picknote { color: var(--amber); }
+  .picknote .mark { flex: none; font-size: 12px; line-height: 1.5; }
+
   .steps { list-style: none; margin: 0 0 22px; padding: 0; display: grid; gap: 10px; }
   .steps li { display: flex; gap: 11px; align-items: flex-start; font-size: 14px; color: var(--muted); line-height: 1.35; }
   .steps li .n {
@@ -238,7 +269,16 @@
 
       <div class="panel-right">
         <h1 class="headline" id="headline">Ready to update</h1>
-        <p class="statusline" id="statusline">Plug in the stick to begin.</p>
+        <p class="statusline" id="statusline">Choose a firmware, then start.</p>
+
+        <div class="picker" id="picker">
+          <label for="fwselect">Firmware to install</label>
+          <div class="selectwrap">
+            <select id="fwselect"></select>
+            <span class="caret" aria-hidden="true">▾</span>
+          </div>
+          <p class="picknote" id="picknote"></p>
+        </div>
 
         <ol class="steps" id="steps">
           <li><span class="n">1</span><span>Plug the programmer stick into a USB port on this computer.</span></li>
@@ -276,8 +316,7 @@
   </main>
 
   <script type="module">
-    import { FW_META, FW_BIN_B64, FW_DAT_B64 } from "./firmware.js";
-    import { runDfu, touch1200, b64ToBytes } from "./dfu.js";
+    import { runDfu, touch1200, calcCrc16 } from "./dfu.js";
 
     const $ = (id) => document.getElementById(id);
     const body = document.body;
@@ -288,11 +327,9 @@
       body.classList.add("no-serial");
     }
 
-    // Firmware chip
-    $("fwchip").innerHTML = `firmware <b>${FW_META.binFile.replace(/\.ino\.bin$/, "")}</b> · ${(FW_META.appSize / 1024).toFixed(0)} KB`;
-
-    const firmwareBin = b64ToBytes(FW_BIN_B64);
-    const initPacket = b64ToBytes(FW_DAT_B64);
+    let CATALOG = null;   // catalog.json
+    let selected = null;  // the chosen firmware entry
+    const fwCache = new Map(); // id -> { bin, dat }
 
     function setState(s) {
       body.className = `state-${s}`;
@@ -316,10 +353,89 @@
 
     const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
 
+    // ---- firmware catalog ----
+    function renderChip() {
+      $("fwchip").innerHTML = selected
+        ? `firmware <b>${selected.id}</b> · ${(selected.size / 1024).toFixed(0)} KB`
+        : "firmware <b>—</b>";
+    }
+
+    function applySelection() {
+      const id = $("fwselect").value;
+      selected = CATALOG.firmwares.find((f) => f.id === id) || null;
+      if (!selected) return;
+      $("picker").classList.toggle("warn", !!selected.warn);
+      $("picknote").innerHTML = selected.note
+        ? `<span class="mark">${selected.warn ? "⚠" : "›"}</span><span>${selected.note}</span>`
+        : "";
+      renderChip();
+    }
+
+    async function loadCatalog() {
+      const sel = $("fwselect");
+      try {
+        const res = await fetch("catalog.json", { cache: "no-cache" });
+        if (!res.ok) throw new Error(`catalog.json returned ${res.status}`);
+        CATALOG = await res.json();
+        if (!CATALOG.firmwares || !CATALOG.firmwares.length) throw new Error("catalog has no firmware entries");
+
+        sel.innerHTML = "";
+        for (const f of CATALOG.firmwares) {
+          const o = document.createElement("option");
+          o.value = f.id;
+          o.textContent = f.label;
+          if (f.default) o.selected = true;
+          sel.appendChild(o);
+        }
+        applySelection();
+        log(`Loaded ${CATALOG.firmwares.length} firmware options.`);
+        $("reset").disabled = false;
+      } catch (err) {
+        sel.innerHTML = '<option>Unavailable</option>';
+        sel.disabled = true;
+        $("reset").disabled = true;
+        setState("error");
+        setHead("Can’t load firmware list", "Reload the page. If it keeps failing, contact support.", "err");
+        log("✗ " + (err.message || err));
+      }
+    }
+
+    // Download the selected image and check it against the catalog's CRC before
+    // sending anything to the board.
+    async function getFirmware(entry) {
+      if (fwCache.has(entry.id)) return fwCache.get(entry.id);
+
+      log(`Downloading ${entry.label} (${(entry.size / 1024).toFixed(0)} KB)…`);
+      const [binRes, datRes] = await Promise.all([
+        fetch(entry.bin, { cache: "no-cache" }),
+        fetch(entry.dat, { cache: "no-cache" }),
+      ]);
+      if (!binRes.ok || !datRes.ok) throw new Error("Couldn’t download the firmware. Check your connection and try again.");
+
+      const bin = new Uint8Array(await binRes.arrayBuffer());
+      const dat = new Uint8Array(await datRes.arrayBuffer());
+
+      if (bin.length !== entry.size) {
+        throw new Error("The downloaded firmware is incomplete. Reload the page and try again.");
+      }
+      const crc = calcCrc16(bin);
+      if (crc !== entry.crc16) {
+        throw new Error("The downloaded firmware failed its integrity check. Reload the page and try again.");
+      }
+      log(`Verified ${entry.id}: ${bin.length.toLocaleString()} bytes, CRC 0x${crc.toString(16).padStart(4, "0")}.`);
+
+      const pair = { bin, dat };
+      fwCache.set(entry.id, pair);
+      return pair;
+    }
+
+    $("fwselect").addEventListener("change", applySelection);
+
     function goIdle() {
       setState("idle");
       setProgress(0);
-      setHead("Ready to update", "Plug in the stick, then start.");
+      setHead("Ready to update", "Choose a firmware, then start.");
+      $("fwselect").disabled = false;   // free to change again
       $("reset").disabled = false;
       $("reset").textContent = "Start update";
       show("reset", true);
@@ -332,7 +448,7 @@
 
     // Phase 1: pick the stick and reset it into update mode via the 1200 touch.
     async function startReset() {
-      if (busy || !("serial" in navigator)) return;
+      if (busy || !("serial" in navigator) || !selected) return;
       busy = true;
       $("reset").disabled = true;
 
@@ -345,9 +461,13 @@
         return;
       }
 
+      // Lock the choice for the rest of the run so it can't drift mid-flow.
+      $("fwselect").disabled = true;
+
       try {
         setState("wait");
         setHead("Switching to update mode", "Resetting the stick…");
+        log(`Firmware selected: ${selected.label} (${selected.id}).`);
         log("Selected device. Sending 1200-baud reset…");
         await touch1200(port);
         log("Reset sent. Waiting for the stick to reconnect in update mode…");
@@ -372,6 +492,7 @@
         setState("error");
         setHead("Couldn’t switch to update mode", err.message || String(err), "err");
         log("✗ " + (err.message || err));
+        $("fwselect").disabled = false;
         show("over", true);
       } finally {
         busy = false;
@@ -396,11 +517,14 @@
       try {
         setState("run");
         setProgress(0);
+        setHead("Preparing", "Getting the firmware ready…");
+        const { bin, dat } = await getFirmware(selected);
+
         setHead("Updating firmware", "Do not unplug the stick.");
-        log(`Opening at 115200 baud. Sending ${FW_META.binFile} (${FW_META.appSize.toLocaleString()} bytes).`);
+        log(`Opening at 115200 baud. Sending ${selected.label} (${bin.length.toLocaleString()} bytes).`);
         await port.open({ baudRate: 115200 });
 
-        await runDfu(port, firmwareBin, initPacket, {
+        await runDfu(port, bin, dat, {
           onProgress: setProgress,
           onStatus: (s) => { $("headline").textContent = s === "Writing firmware" ? "Updating firmware" : s; },
           onLog: log,
@@ -408,8 +532,8 @@
 
         setState("done");
         setProgress(1);
-        setHead("Update complete", "You can safely unplug the stick.", "ok");
-        log("✓ Firmware updated successfully.");
+        setHead("Update complete", `${selected.label} installed. You can safely unplug the stick.`, "ok");
+        log(`✓ ${selected.label} installed successfully.`);
         show("flash", false);
         show("over", false);
         show("again", true);
@@ -430,6 +554,11 @@
     $("flash").addEventListener("click", startFlash);
     $("over").addEventListener("click", goIdle);
     $("again").addEventListener("click", goIdle);
+
+    // Boot
+    $("reset").disabled = true;   // until the catalog is in
+    setHead("Ready to update", "Choose a firmware, then start.");
+    if ("serial" in navigator) loadCatalog();
   </script>
 </body>
 </html>
