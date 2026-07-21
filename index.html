@@ -315,8 +315,29 @@
     </div>
   </main>
 
+    // If the module below fails to load (stale cache, blocked file, bad
+    // deploy), the page would otherwise sit there looking functional but dead.
+    // This turns that into something the customer can act on.
+    window.addEventListener("DOMContentLoaded", function () {
+      setTimeout(function () {
+        if (window.__updaterBooted) return;
+        var s = document.getElementById("statusline");
+        var h = document.getElementById("headline");
+        if (h) h.textContent = "Couldn’t start the updater";
+        if (s) {
+          s.textContent = "Reload the page with Ctrl+Shift+R. If that doesn’t help, contact support.";
+          s.className = "statusline err";
+        }
+        var b = document.getElementById("reset");
+        if (b) b.disabled = true;
+      }, 5000);
+    });
+  </script>
+
   <script type="module">
-    import { runDfu, touch1200, calcCrc16 } from "./dfu.js";
+    // The ?v= marker forces browsers and CDNs to fetch a fresh copy whenever
+    // dfu.js changes. Bump it any time you edit dfu.js.
+    import { runDfu, touch1200, calcCrc16 } from "./dfu.js?v=2";
 
     const $ = (id) => document.getElementById(id);
     const body = document.body;
@@ -556,6 +577,7 @@
     $("again").addEventListener("click", goIdle);
 
     // Boot
+    window.__updaterBooted = true;
     $("reset").disabled = true;   // until the catalog is in
     setHead("Ready to update", "Choose a firmware, then start.");
     if ("serial" in navigator) loadCatalog();
