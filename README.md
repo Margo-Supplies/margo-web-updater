@@ -57,13 +57,13 @@ Each product must have exactly one firmware with `default: True`.
 
 ## How each flow works
 
-**Programmer Stick (nRF DFU).** Start update → pick the stick → the page sends a
+**Programmer Stick.** Start update → pick the stick → the page sends a
 1200-baud "touch" that resets it into the Adafruit DFU bootloader → it reconnects
 as a new USB device, so the browser asks you to pick it again → the page verifies
 the image CRC16 and runs the DFU sequence (start, erase, init packet, 512-byte
 data packets, stop).
 
-**Avian Alarm (SAMD BOSSA).** For each stage: pick the device → the page sends a
+**Avian Alarm.** For each stage: pick the device → the page sends a
 1200-baud touch that resets the MKR Zero into its Arduino SAM-BA bootloader → pick
 it again → the page runs the exact bossac sequence: `N`/`V` handshake, chip-erase
 from 0x2000 (`X`, so the bootloader survives), stage each 4 KB block into SRAM
