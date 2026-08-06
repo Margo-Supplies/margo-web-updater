@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Margo Programmer Stick — Firmware Update</title>
+<title>Margo Device Programmer — Firmware Update</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -63,16 +63,22 @@
     background: rgba(255, 255, 255, 0.01);
   }
   .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-  .brand .glyph {
-    width: 26px; height: 26px; flex: none;
-    border-radius: 6px;
-    object-fit: contain;
-  }
+  .brand .glyph { width: 26px; height: 26px; flex: none; border-radius: 6px; object-fit: contain; }
   .brand .name {
     font-weight: 600; font-size: 15px; letter-spacing: 0.02em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .brand .sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .backbtn {
+    appearance: none; cursor: pointer; font-family: inherit; font-size: 13px;
+    color: var(--text); background: transparent;
+    border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px;
+    display: none; align-items: center; gap: 7px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .backbtn:hover { border-color: var(--muted); background: rgba(255,255,255,0.02); }
+  body.view-flow .backbtn { display: inline-flex; }
 
   .fwchip {
     font-family: "IBM Plex Mono", monospace;
@@ -81,7 +87,35 @@
     padding: 5px 11px; white-space: nowrap;
   }
   .fwchip b { color: var(--text); font-weight: 600; }
+  body.view-picker .fwchip { display: none; }
 
+  /* ---------------- product picker ---------------- */
+  .picker-screen { padding: 26px 24px 30px; }
+  .picker-screen .lead { margin: 4px 2px 20px; }
+  .picker-screen .lead h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; }
+  .picker-screen .lead p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+  .product-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .product-card {
+    text-align: left; cursor: pointer; font-family: inherit; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 13px;
+    padding: 18px 16px; display: flex; flex-direction: column; gap: 8px;
+    transition: border-color 0.18s ease, transform 0.08s ease, background 0.18s ease;
+  }
+  .product-card:hover { border-color: var(--teal); background: rgba(53,198,192,0.05); }
+  .product-card:active { transform: translateY(1px); }
+  .product-card:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  .product-card .pc-name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .product-card .pc-aka { font-size: 12px; color: var(--amber); font-weight: 500; margin-top: -4px; }
+  .product-card .pc-board {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--muted);
+  }
+  .product-card .pc-blurb { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+  .product-card .pc-go {
+    margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--teal);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* ---------------- flow screen ---------------- */
   .stage {
     display: grid;
     grid-template-columns: 190px 1fr;
@@ -90,31 +124,20 @@
     align-items: center;
   }
 
-  /* --- status light + progress ring (the signature) --- */
   .indicator { position: relative; width: 168px; height: 168px; margin: 0 auto; }
   .ring { transform: rotate(-90deg); width: 168px; height: 168px; }
   .ring .track { stroke: var(--ring-track); }
-  .ring .fill {
-    stroke: var(--teal);
-    stroke-linecap: round;
-    transition: stroke-dashoffset 0.25s linear, stroke 0.4s ease;
-  }
+  .ring .fill { stroke: var(--teal); stroke-linecap: round; transition: stroke-dashoffset 0.25s linear, stroke 0.4s ease; }
   .led {
-    position: absolute; inset: 32px;
-    border-radius: 50%;
+    position: absolute; inset: 32px; border-radius: 50%;
     background: radial-gradient(circle at 38% 34%, rgba(255,255,255,0.18), transparent 45%), var(--led-color, #35507a);
     --led-color: #2a3f63;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 34px -6px var(--led-glow, transparent);
     display: grid; place-items: center;
     transition: background 0.4s ease, box-shadow 0.4s ease;
   }
-  .led .pct {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 26px; font-weight: 600; letter-spacing: -0.02em;
-    opacity: 0; transition: opacity 0.3s ease;
-  }
+  .led .pct { font-family: "IBM Plex Mono", monospace; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; opacity: 0; transition: opacity 0.3s ease; }
 
-  /* states */
   .state-idle    .led { --led-color: #2a3f63; --led-glow: transparent; }
   .state-wait    .led { --led-color: var(--amber); --led-glow: var(--amber); animation: breathe 2.4s ease-in-out infinite; }
   .state-run     .led { --led-color: var(--teal);  --led-glow: var(--teal); }
@@ -129,44 +152,29 @@
     0%, 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 12px -4px var(--amber); }
     50%      { box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 46px 2px var(--amber); }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .state-wait .led { animation: none; }
-  }
+  @media (prefers-reduced-motion: reduce) { .state-wait .led { animation: none; } }
 
-  /* --- right column --- */
   .headline { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; }
   .statusline { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--muted); margin: 0 0 18px; min-height: 18px; }
   .statusline.err { color: var(--red); }
   .statusline.ok  { color: var(--green); }
 
-  /* --- firmware picker --- */
   .picker { margin: 0 0 20px; }
-  .picker label {
-    display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 7px;
-  }
+  .picker label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
   .selectwrap { position: relative; }
-  .selectwrap .caret {
-    position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
-    color: var(--muted); pointer-events: none; font-size: 12px;
-  }
+  .selectwrap .caret { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 12px; }
   #fwselect {
-    appearance: none; -webkit-appearance: none;
-    width: 100%; cursor: pointer;
+    appearance: none; -webkit-appearance: none; width: 100%; cursor: pointer;
     font-family: inherit; font-size: 14.5px; font-weight: 500; color: var(--text);
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px 38px 12px 14px;
-    transition: border-color 0.2s ease;
+    padding: 12px 38px 12px 14px; transition: border-color 0.2s ease;
   }
   #fwselect:hover { border-color: var(--muted); }
   #fwselect:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
   #fwselect:disabled { opacity: 0.5; cursor: default; }
   #fwselect option { background: var(--panel-2); color: var(--text); }
   .picker.warn #fwselect { border-color: var(--amber); }
-  .picknote {
-    margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted);
-    display: flex; gap: 7px; align-items: flex-start;
-  }
+  .picknote { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); display: flex; gap: 7px; align-items: flex-start; }
   .picker.warn .picknote { color: var(--amber); }
   .picknote .mark { flex: none; font-size: 12px; line-height: 1.5; }
 
@@ -179,19 +187,13 @@
     display: grid; place-items: center; margin-top: 1px;
   }
   .steps li b { color: var(--text); font-weight: 500; }
-  .steps li kbd {
-    font-family: "IBM Plex Mono", monospace; font-size: 12px;
-    background: var(--panel-2); border: 1px solid var(--line);
-    border-radius: 5px; padding: 1px 6px; color: var(--text);
-  }
 
   .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
   button.primary {
     appearance: none; border: 0; cursor: pointer;
     font-family: inherit; font-weight: 600; font-size: 15px; letter-spacing: 0.01em;
     color: #07220f; background: linear-gradient(180deg, #5be0a0, var(--green));
-    padding: 13px 20px; border-radius: 10px;
-    box-shadow: 0 10px 24px -12px var(--green);
+    padding: 13px 20px; border-radius: 10px; box-shadow: 0 10px 24px -12px var(--green);
     transition: transform 0.08s ease, filter 0.2s ease, opacity 0.2s ease;
   }
   button.primary:hover { filter: brightness(1.05); }
@@ -216,28 +218,27 @@
   .foot details summary::-webkit-details-marker { display: none; }
   .foot details summary .chev { transition: transform 0.2s ease; }
   .foot details[open] summary .chev { transform: rotate(90deg); }
-  .logwrap {
-    margin-top: 12px; background: #08101f; border: 1px solid var(--line); border-radius: 9px;
-    max-height: 190px; overflow: auto;
-  }
-  #log {
-    margin: 0; padding: 12px 14px;
-    font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.6;
-    color: #9fb2d4; white-space: pre-wrap; word-break: break-word;
-  }
+  .logwrap { margin-top: 12px; background: #08101f; border: 1px solid var(--line); border-radius: 9px; max-height: 190px; overflow: auto; }
+  #log { margin: 0; padding: 12px 14px; font-family: "IBM Plex Mono", monospace; font-size: 12px; line-height: 1.6; color: #9fb2d4; white-space: pre-wrap; word-break: break-word; }
   #log .t { color: #4d6188; }
   .hint { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
   .hint a { color: var(--teal); }
 
   .unsupported {
-    display: none; margin: 0 24px 26px; padding: 14px 16px;
+    display: none; margin: 22px 24px 26px; padding: 14px 16px;
     border: 1px solid var(--red); border-radius: 10px;
     background: rgba(241,106,106,0.06); color: #ffd9d9; font-size: 13.5px; line-height: 1.5;
   }
-  body.no-serial .stage, body.no-serial .foot { display: none; }
+
+  /* view switching */
+  body.view-picker .flow-screen, body.view-picker .foot { display: none; }
+  body.view-flow .picker-screen { display: none; }
+  body.no-serial .picker-screen, body.no-serial .flow-screen,
+  body.no-serial .foot, body.no-serial .backbtn { display: none; }
   body.no-serial .unsupported { display: block; }
 
   @media (max-width: 560px) {
+    .product-grid { grid-template-columns: 1fr; }
     .stage { grid-template-columns: 1fr; gap: 20px; padding: 26px 18px; }
     .indicator { width: 150px; height: 150px; }
     .ring, .led { width: 150px; height: 150px; }
@@ -245,54 +246,63 @@
   }
 </style>
 </head>
-<body class="state-idle">
+<body class="view-picker state-idle">
   <main class="console" role="application" aria-label="Firmware updater">
     <div class="topbar">
       <div class="brand">
         <img class="glyph" src="logo.png" alt="Margo logo" />
-        <span class="name">Margo Programmer Stick
-          <span class="sub">Firmware Updater</span>
+        <span class="name" id="brandName">Margo Device Programmer
+          <span class="sub" id="brandSub">Firmware Updater</span>
         </span>
       </div>
+      <button class="backbtn" id="back">‹ Products</button>
       <span class="fwchip" id="fwchip">firmware <b>—</b></span>
     </div>
 
-    <section class="stage">
-      <div class="indicator" id="indicator" aria-hidden="true">
-        <svg class="ring" viewBox="0 0 168 168">
-          <circle class="track" cx="84" cy="84" r="76" fill="none" stroke-width="8" />
-          <circle class="fill" id="ringFill" cx="84" cy="84" r="76" fill="none" stroke-width="8"
-                  stroke-dasharray="477.5" stroke-dashoffset="477.5" />
-        </svg>
-        <div class="led"><span class="pct" id="pct">0%</span></div>
+    <!-- ========== product picker ========== -->
+    <section class="picker-screen">
+      <div class="lead">
+        <h1>Which device are you updating?</h1>
+        <p>Pick a product to update its firmware. Everything runs in your browser — nothing is installed.</p>
       </div>
+      <div class="product-grid" id="productGrid"></div>
+    </section>
 
-      <div class="panel-right">
-        <h1 class="headline" id="headline">Ready to update</h1>
-        <p class="statusline" id="statusline">Choose a firmware, then start.</p>
+    <!-- ========== flashing flow ========== -->
+    <section class="flow-screen">
+      <div class="stage">
+        <div class="indicator" id="indicator" aria-hidden="true">
+          <svg class="ring" viewBox="0 0 168 168">
+            <circle class="track" cx="84" cy="84" r="76" fill="none" stroke-width="8" />
+            <circle class="fill" id="ringFill" cx="84" cy="84" r="76" fill="none" stroke-width="8"
+                    stroke-dasharray="477.5" stroke-dashoffset="477.5" />
+          </svg>
+          <div class="led"><span class="pct" id="pct">0%</span></div>
+        </div>
 
-        <div class="picker" id="picker">
-          <label for="fwselect">Firmware to install</label>
-          <div class="selectwrap">
-            <select id="fwselect"></select>
-            <span class="caret" aria-hidden="true">▾</span>
+        <div class="panel-right">
+          <h1 class="headline" id="headline">Ready to update</h1>
+          <p class="statusline" id="statusline">Choose a firmware, then start.</p>
+
+          <div class="picker" id="picker">
+            <label for="fwselect">Firmware to install</label>
+            <div class="selectwrap">
+              <select id="fwselect"></select>
+              <span class="caret" aria-hidden="true">▾</span>
+            </div>
+            <p class="picknote" id="picknote"></p>
           </div>
-          <p class="picknote" id="picknote"></p>
-        </div>
 
-        <ol class="steps" id="steps">
-          <li><span class="n">1</span><span>Plug the programmer stick into a USB port on this computer.</span></li>
-          <li><span class="n">2</span><span>Click <b>Start update</b> and pick the stick. It will switch itself into update mode — no buttons to press.</span></li>
-          <li><span class="n">3</span><span>When asked, pick the stick <b>one more time</b> to send the firmware. That second pick is the browser’s way of confirming the device.</span></li>
-        </ol>
+          <ol class="steps" id="steps"></ol>
 
-        <div class="actions">
-          <button class="primary" id="reset">Start update</button>
-          <button class="primary" id="flash" style="display:none;">Continue &amp; send firmware</button>
-          <button class="ghost" id="again" style="display:none;">Update another stick</button>
-          <button class="ghost" id="over" style="display:none;">Start over</button>
+          <div class="actions">
+            <button class="primary" id="reset">Start update</button>
+            <button class="primary" id="flash" style="display:none;">Continue &amp; send firmware</button>
+            <button class="ghost" id="again" style="display:none;">Update another</button>
+            <button class="ghost" id="over" style="display:none;">Start over</button>
+          </div>
+          <p class="hint" id="hint">Runs entirely in your browser — nothing is installed. Use Chrome or Edge on a computer.</p>
         </div>
-        <p class="hint" id="hint">Runs entirely in your browser — nothing is installed. Use Chrome or Edge on a computer.</p>
       </div>
     </section>
 
@@ -307,59 +317,52 @@
         <summary><span class="chev">▸</span> Technical log</summary>
         <div class="logwrap"><pre id="log"><span class="t">[ready]</span> waiting for device…</pre></div>
         <p class="hint" id="advanced">
-          Why pick the stick twice? Switching to update mode makes the stick reconnect as a new USB
-          device, and the browser asks you to confirm that new device once before it can send firmware.
-          If the second list shows more than one option, choose the one that appeared <b>after</b> the reset.
+          Each update has the device reconnect as a new USB device once it enters update mode,
+          so the browser asks you to pick it a second time before firmware is sent. If a list shows
+          more than one option, choose the one that appeared <b>after</b> the reset.
         </p>
       </details>
     </div>
   </main>
 
   <script>
-    // If the module below fails to load (stale cache, blocked file, bad
-    // deploy), the page would otherwise sit there looking functional but dead.
-    // This turns that into something the customer can act on.
+    // If the module below fails to load (stale cache, blocked file, bad deploy),
+    // turn a dead-looking page into something the customer can act on.
     window.addEventListener("DOMContentLoaded", function () {
       setTimeout(function () {
         if (window.__updaterBooted) return;
         var s = document.getElementById("statusline");
         var h = document.getElementById("headline");
         if (h) h.textContent = "Couldn’t start the updater";
-        if (s) {
-          s.textContent = "Reload the page with Ctrl+Shift+R. If that doesn’t help, contact support.";
-          s.className = "statusline err";
-        }
-        var b = document.getElementById("reset");
-        if (b) b.disabled = true;
+        if (s) { s.textContent = "Reload the page with Ctrl+Shift+R. If that doesn’t help, contact support."; s.className = "statusline err"; }
       }, 5000);
     });
   </script>
 
   <script type="module">
-    // The ?v= marker forces browsers and CDNs to fetch a fresh copy whenever
-    // dfu.js changes. Bump it any time you edit dfu.js.
+    // Bump the ?v= markers whenever dfu.js / bossa.js change.
     import { runDfu, touch1200, calcCrc16 } from "./dfu.js?v=2";
+    import { flashSamdImage, touchSamd1200, crc16 as crc16x } from "./bossa.js?v=1";
 
     const $ = (id) => document.getElementById(id);
     const body = document.body;
-    const RING_LEN = 2 * Math.PI * 76; // 477.5
+    const RING_LEN = 2 * Math.PI * 76;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // No Web Serial → show guidance, stop.
-    if (!("serial" in navigator)) {
-      body.classList.add("no-serial");
-    }
+    if (!("serial" in navigator)) body.classList.add("no-serial");
 
-    let CATALOG = null;   // catalog.json
-    let selected = null;  // the chosen firmware entry
-    const fwCache = new Map(); // id -> { bin, dat }
+    let CATALOG = null;
+    let product = null;      // current product
+    let selected = null;     // current firmware entry
+    let samdStage = 0;       // stage index for samd-bossa firmwares
+    let busy = false;
+    const binCache = new Map(); // url -> Uint8Array
 
-    function setState(s) {
-      body.className = `state-${s}`;
-    }
+    // ---------- small UI helpers ----------
+    function setState(s) { body.className = body.className.replace(/state-\w+/, "state-" + s); }
     function setHead(title, status, kind = "") {
       $("headline").textContent = title;
-      const el = $("statusline");
-      el.textContent = status;
+      const el = $("statusline"); el.textContent = status;
       el.className = "statusline" + (kind ? " " + kind : "");
     }
     function setProgress(frac) {
@@ -372,19 +375,52 @@
       pre.insertAdjacentHTML("beforeend", `\n<span class="t">[${t}]</span> ${msg}`);
       pre.parentElement.scrollTop = pre.parentElement.scrollHeight;
     }
-
     const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
 
-    // ---- firmware catalog ----
+    function fwSize(entry) {
+      return entry.size != null ? entry.size
+        : (entry.stages ? entry.stages.reduce((a, s) => a + (s.size || 0), 0) : 0);
+    }
     function renderChip() {
       $("fwchip").innerHTML = selected
-        ? `firmware <b>${selected.id}</b> · ${(selected.size / 1024).toFixed(0)} KB`
+        ? `firmware <b>${selected.id}</b> · ${(fwSize(selected) / 1024).toFixed(0)} KB`
         : "firmware <b>—</b>";
     }
 
+    // ---------- catalog ----------
+    async function loadCatalog() {
+      const res = await fetch("catalog.json", { cache: "no-cache" });
+      if (!res.ok) throw new Error(`catalog.json returned ${res.status}`);
+      const data = await res.json();
+      // Back-compat: an old single-product catalog had a top-level "firmwares".
+      if (!data.products && data.firmwares) {
+        data.products = [{ id: "stick", name: "Programmer Stick", board: "", blurb: "", method: "nrf-dfu", firmwares: data.firmwares }];
+      }
+      if (!data.products || !data.products.length) throw new Error("catalog has no products");
+      return data;
+    }
+
+    function renderProducts() {
+      const grid = $("productGrid");
+      grid.innerHTML = "";
+      for (const p of CATALOG.products) {
+        const card = document.createElement("button");
+        card.className = "product-card";
+        card.innerHTML =
+          `<span class="pc-name">${p.name}</span>` +
+          (p.aka ? `<span class="pc-aka">${p.aka}</span>` : "") +
+          (p.board ? `<span class="pc-board">${p.board}</span>` : "") +
+          (p.blurb ? `<span class="pc-blurb">${p.blurb}</span>` : "") +
+          `<span class="pc-go">Update firmware ›</span>`;
+        card.addEventListener("click", () => enterProduct(p));
+        grid.appendChild(card);
+      }
+    }
+
+    // ---------- firmware picker within a product ----------
     function applySelection() {
       const id = $("fwselect").value;
-      selected = CATALOG.firmwares.find((f) => f.id === id) || null;
+      selected = product.firmwares.find((f) => f.id === id) || null;
       if (!selected) return;
       $("picker").classList.toggle("warn", !!selected.warn);
       $("picknote").innerHTML = selected.note
@@ -393,195 +429,267 @@
       renderChip();
     }
 
-    async function loadCatalog() {
+    function stepsFor(p) {
+      const name = p.name;
+      if (p.method === "samd-bossa") {
+        return [
+          `Plug the ${name} into a USB port on this computer.`,
+          `Click <b>Start update</b>. It switches itself into update mode — no buttons to press — then asks you to pick it.`,
+          `Pick it <b>once more</b> to send the firmware. Some updates run in two short steps; just follow the prompts.`,
+        ];
+      }
+      return [
+        `Plug the ${name} into a USB port on this computer.`,
+        `Click <b>Start update</b> and pick the device. It switches itself into update mode — no buttons to press.`,
+        `When asked, pick it <b>one more time</b> to send the firmware. That second pick is the browser confirming the device.`,
+      ];
+    }
+
+    function enterProduct(p) {
+      product = p;
+      selected = null;
+      samdStage = 0;
+      body.classList.remove("view-picker");
+      body.classList.add("view-flow");
+      $("brandName").firstChild.textContent = p.name + " ";
+      $("brandSub").textContent = p.aka || "Firmware Updater";
+
       const sel = $("fwselect");
-      try {
-        const res = await fetch("catalog.json", { cache: "no-cache" });
-        if (!res.ok) throw new Error(`catalog.json returned ${res.status}`);
-        CATALOG = await res.json();
-        if (!CATALOG.firmwares || !CATALOG.firmwares.length) throw new Error("catalog has no firmware entries");
-
-        sel.innerHTML = "";
-        for (const f of CATALOG.firmwares) {
-          const o = document.createElement("option");
-          o.value = f.id;
-          o.textContent = f.label;
-          if (f.default) o.selected = true;
-          sel.appendChild(o);
-        }
-        applySelection();
-        log(`Loaded ${CATALOG.firmwares.length} firmware options.`);
-        $("reset").disabled = false;
-      } catch (err) {
-        sel.innerHTML = '<option>Unavailable</option>';
-        sel.disabled = true;
-        $("reset").disabled = true;
-        setState("error");
-        setHead("Can’t load firmware list", "Reload the page. If it keeps failing, contact support.", "err");
-        log("✗ " + (err.message || err));
+      sel.innerHTML = "";
+      for (const f of p.firmwares) {
+        const o = document.createElement("option");
+        o.value = f.id; o.textContent = f.label;
+        if (f.default) o.selected = true;
+        sel.appendChild(o);
       }
+      $("steps").innerHTML = stepsFor(p)
+        .map((s, i) => `<li><span class="n">${i + 1}</span><span>${s}</span></li>`)
+        .join("");
+      applySelection();
+      goIdle();
+      log(`Selected product: ${p.name} (${p.method}).`);
     }
 
-    // Download the selected image and check it against the catalog's CRC before
-    // sending anything to the board.
-    async function getFirmware(entry) {
-      if (fwCache.has(entry.id)) return fwCache.get(entry.id);
+    function backToProducts() {
+      if (busy) return;
+      product = null; selected = null; samdStage = 0;
+      body.classList.remove("view-flow");
+      body.classList.add("view-picker");
+      $("brandName").firstChild.textContent = "Margo Device Programmer ";
+      $("brandSub").textContent = "Firmware Updater";
+      setState("idle"); setProgress(0);
+    }
 
-      log(`Downloading ${entry.label} (${(entry.size / 1024).toFixed(0)} KB)…`);
-      const [binRes, datRes] = await Promise.all([
-        fetch(entry.bin, { cache: "no-cache" }),
-        fetch(entry.dat, { cache: "no-cache" }),
-      ]);
-      if (!binRes.ok || !datRes.ok) throw new Error("Couldn’t download the firmware. Check your connection and try again.");
-
-      const bin = new Uint8Array(await binRes.arrayBuffer());
-      const dat = new Uint8Array(await datRes.arrayBuffer());
-
-      if (bin.length !== entry.size) {
+    // ---------- firmware download + integrity ----------
+    async function getBin(url, expectSize, expectCrc, crcFn) {
+      if (binCache.has(url)) return binCache.get(url);
+      const res = await fetch(url, { cache: "no-cache" });
+      if (!res.ok) throw new Error("Couldn’t download the firmware. Check your connection and try again.");
+      const bin = new Uint8Array(await res.arrayBuffer());
+      if (expectSize != null && bin.length !== expectSize)
         throw new Error("The downloaded firmware is incomplete. Reload the page and try again.");
-      }
-      const crc = calcCrc16(bin);
-      if (crc !== entry.crc16) {
+      if (expectCrc != null && crcFn(bin) !== expectCrc)
         throw new Error("The downloaded firmware failed its integrity check. Reload the page and try again.");
-      }
-      log(`Verified ${entry.id}: ${bin.length.toLocaleString()} bytes, CRC 0x${crc.toString(16).padStart(4, "0")}.`);
-
-      const pair = { bin, dat };
-      fwCache.set(entry.id, pair);
-      return pair;
+      binCache.set(url, bin);
+      return bin;
     }
 
-    $("fwselect").addEventListener("change", applySelection);
-
+    // ---------- shared flow buttons ----------
     function goIdle() {
-      setState("idle");
-      setProgress(0);
+      setState("idle"); setProgress(0);
       setHead("Ready to update", "Choose a firmware, then start.");
-      $("fwselect").disabled = false;   // free to change again
-      $("reset").disabled = false;
-      $("reset").textContent = "Start update";
-      show("reset", true);
-      show("flash", false);
-      show("again", false);
-      show("over", false);
+      $("fwselect").disabled = false;
+      $("reset").disabled = false; $("reset").textContent = "Start update";
+      show("reset", true); show("flash", false); show("again", false); show("over", false);
     }
 
-    let busy = false;
+    async function pickPort() {
+      try { return await navigator.serial.requestPort(); }
+      catch { return null; } // chooser dismissed
+    }
 
-    // Phase 1: pick the stick and reset it into update mode via the 1200 touch.
-    async function startReset() {
-      if (busy || !("serial" in navigator) || !selected) return;
-      busy = true;
-      $("reset").disabled = true;
+    async function countdown(totalMs, headTitle, statusFn) {
+      let left = Math.round(totalMs / 1000);
+      setHead(headTitle, statusFn(left));
+      await new Promise((resolve) => {
+        const t = setInterval(() => {
+          left -= 1;
+          if (left <= 0) { clearInterval(t); resolve(); }
+          else setHead(headTitle, statusFn(left));
+        }, 1000);
+      });
+    }
 
-      let port;
-      try {
-        port = await navigator.serial.requestPort();
-      } catch {
-        $("reset").disabled = false;   // chooser dismissed
-        busy = false;
-        return;
-      }
-
-      // Lock the choice for the rest of the run so it can't drift mid-flow.
+    // ======================================================================
+    //  nRF52 DFU flow (Programmer Stick)
+    // ======================================================================
+    async function nrfReset() {
+      const port = await pickPort();
+      if (!port) { $("reset").disabled = false; busy = false; return; }
       $("fwselect").disabled = true;
-
       try {
         setState("wait");
-        setHead("Switching to update mode", "Resetting the stick…");
+        setHead("Switching to update mode", "Resetting the device…");
         log(`Firmware selected: ${selected.label} (${selected.id}).`);
         log("Selected device. Sending 1200-baud reset…");
         await touch1200(port);
-        log("Reset sent. Waiting for the stick to reconnect in update mode…");
-
-        // Give the OS time to re-enumerate the bootloader as a new USB device.
-        let left = 4;
-        setHead("Switching to update mode", `Almost ready… ${left}s`);
-        await new Promise((resolve) => {
-          const t = setInterval(() => {
-            left -= 1;
-            if (left <= 0) { clearInterval(t); resolve(); }
-            else setHead("Switching to update mode", `Almost ready… ${left}s`);
-          }, 1000);
-        });
-
-        setHead("Ready to send firmware", "Click Continue, then pick the stick again.");
-        log("Ready. Click Continue and choose the stick from the list.");
-        show("reset", false);
-        show("flash", true);
-        show("over", true);
+        log("Reset sent. Waiting for it to reconnect in update mode…");
+        await countdown(4000, "Switching to update mode", (s) => `Almost ready… ${s}s`);
+        setHead("Ready to send firmware", "Click Continue, then pick the device again.");
+        log("Ready. Click Continue and choose the device from the list.");
+        show("reset", false); show("flash", true); show("over", true);
       } catch (err) {
-        setState("error");
-        setHead("Couldn’t switch to update mode", err.message || String(err), "err");
+        setState("error"); setHead("Couldn’t switch to update mode", err.message || String(err), "err");
         log("✗ " + (err.message || err));
-        $("fwselect").disabled = false;
-        show("over", true);
-      } finally {
-        busy = false;
-      }
+        $("fwselect").disabled = false; show("over", true);
+      } finally { busy = false; }
     }
 
-    // Phase 2: pick the (now re-enumerated) bootloader and send the firmware.
-    async function startFlash() {
-      if (busy || !("serial" in navigator)) return;
-      busy = true;
-      $("flash").disabled = true;
-
-      let port;
+    async function nrfFlash() {
+      const port = await pickPort();
+      if (!port) { $("flash").disabled = false; busy = false; return; }
       try {
-        port = await navigator.serial.requestPort();
-      } catch {
-        $("flash").disabled = false;   // chooser dismissed
-        busy = false;
-        return;
-      }
-
-      try {
-        setState("run");
-        setProgress(0);
+        setState("run"); setProgress(0);
         setHead("Preparing", "Getting the firmware ready…");
-        const { bin, dat } = await getFirmware(selected);
-
-        setHead("Updating firmware", "Do not unplug the stick.");
+        const bin = await getBin(selected.bin, selected.size, selected.crc16, calcCrc16);
+        const dat = await getBin(selected.dat, null, null, null);
+        setHead("Updating firmware", "Do not unplug the device.");
         log(`Opening at 115200 baud. Sending ${selected.label} (${bin.length.toLocaleString()} bytes).`);
         await port.open({ baudRate: 115200 });
-
         await runDfu(port, bin, dat, {
           onProgress: setProgress,
           onStatus: (s) => { $("headline").textContent = s === "Writing firmware" ? "Updating firmware" : s; },
           onLog: log,
         });
-
-        setState("done");
-        setProgress(1);
-        setHead("Update complete", `${selected.label} installed. You can safely unplug the stick.`, "ok");
+        setState("done"); setProgress(1);
+        setHead("Update complete", `${selected.label} installed. You can safely unplug the device.`, "ok");
         log(`✓ ${selected.label} installed successfully.`);
-        show("flash", false);
-        show("over", false);
-        show("again", true);
+        show("flash", false); show("over", false); show("again", true);
       } catch (err) {
-        setState("error");
-        setHead("Update failed", err.message || String(err), "err");
+        setState("error"); setHead("Update failed", err.message || String(err), "err");
         log("✗ " + (err.message || err));
         try { await port.close(); } catch (_) {}
-        $("flash").disabled = false;
-        $("flash").textContent = "Try picking the stick again";
+        $("flash").disabled = false; $("flash").textContent = "Try picking the device again";
         show("over", true);
-      } finally {
-        busy = false;
-      }
+      } finally { busy = false; }
     }
 
-    $("reset").addEventListener("click", startReset);
-    $("flash").addEventListener("click", startFlash);
-    $("over").addEventListener("click", goIdle);
-    $("again").addEventListener("click", goIdle);
+    // ======================================================================
+    //  SAMD BOSSA flow (Avian Alarm) — one or more stages, each: touch → pick → flash
+    // ======================================================================
+    function stageLabel() {
+      const stages = selected.stages;
+      const st = stages[samdStage];
+      const which = stages.length > 1 ? `Step ${samdStage + 1} of ${stages.length} — ` : "";
+      return which + (st.label || st.role);
+    }
 
-    // Boot
+    async function samdReset() {
+      const port = await pickPort();
+      if (!port) { $("reset").disabled = false; busy = false; return; }
+      if (samdStage === 0) $("fwselect").disabled = true;
+      try {
+        setState("wait");
+        setHead(stageLabel(), "Switching the device into update mode…");
+        if (samdStage === 0) log(`Firmware selected: ${selected.label} (${selected.id}).`);
+        log(`Sending 1200-baud reset for ${selected.stages[samdStage].role}…`);
+        await touchSamd1200(port);
+        log("Reset sent. Waiting for the bootloader to appear…");
+        await countdown(5000, stageLabel(), (s) => `Almost ready… ${s}s`);
+        setHead(stageLabel(), "Click Continue, then pick the device again.");
+        $("flash").textContent = "Continue & send firmware";
+        show("reset", false); show("flash", true); show("over", true);
+      } catch (err) {
+        setState("error"); setHead("Couldn’t switch to update mode", err.message || String(err), "err");
+        log("✗ " + (err.message || err));
+        $("fwselect").disabled = false; show("over", true);
+      } finally { busy = false; }
+    }
+
+    async function samdFlash() {
+      const port = await pickPort();
+      if (!port) { $("flash").disabled = false; busy = false; return; }
+      const stages = selected.stages;
+      const st = stages[samdStage];
+      const offset = product.flashOffset ?? 0x2000;
+      try {
+        setState("run"); setProgress(0);
+        setHead(stageLabel(), "Getting the firmware ready…");
+        const bin = await getBin(st.bin, st.size, st.crc16, crc16x);
+        setHead(stageLabel(), "Do not unplug the device.");
+        log(`Flashing ${st.role} (${bin.length.toLocaleString()} bytes) at 0x${offset.toString(16)}.`);
+        await flashSamdImage(port, bin, {
+          offset, verify: true,
+          hooks: {
+            onProgress: setProgress,
+            onStatus: (s) => { $("headline").textContent = s + (stages.length > 1 ? ` — step ${samdStage + 1}/${stages.length}` : ""); },
+            onLog: log,
+          },
+        });
+        log(`✓ ${st.role} done.`);
+
+        if (samdStage < stages.length - 1) {
+          // More stages to go. If this stage needs time to run (e.g. the memory
+          // wipe), wait for it, then return to the reset phase for the next stage.
+          const runMs = st.runMs || 0;
+          if (runMs) {
+            setState("wait");
+            await countdown(runMs, stageLabel(), (s) => `Letting the device finish… ${s}s`);
+          }
+          samdStage++;
+          setState("idle"); setProgress(0);
+          setHead(stageLabel(), "The device restarted. Click to switch it back to update mode.");
+          $("reset").textContent = "Switch to update mode";
+          $("flash").textContent = "Continue & send firmware";
+          show("reset", true); show("flash", false); show("over", true); show("again", false);
+        } else {
+          setState("done"); setProgress(1);
+          setHead("Update complete", `${selected.label} installed. You can safely unplug the device.`, "ok");
+          log(`✓ ${selected.label} installed successfully.`);
+          show("flash", false); show("over", false); show("again", true);
+        }
+      } catch (err) {
+        setState("error"); setHead("Update failed", err.message || String(err), "err");
+        log("✗ " + (err.message || err));
+        try { await port.close(); } catch (_) {}
+        $("flash").disabled = false; $("flash").textContent = "Try picking the device again";
+        show("over", true);
+      } finally { busy = false; }
+    }
+
+    // ---------- button routing ----------
+    function onReset() {
+      if (busy || !("serial" in navigator) || !selected) return;
+      busy = true; $("reset").disabled = true;
+      if (product.method === "samd-bossa") samdReset(); else nrfReset();
+    }
+    function onFlash() {
+      if (busy || !("serial" in navigator)) return;
+      busy = true; $("flash").disabled = true;
+      if (product.method === "samd-bossa") samdFlash(); else nrfFlash();
+    }
+
+    $("fwselect").addEventListener("change", () => { samdStage = 0; applySelection(); });
+    $("reset").addEventListener("click", () => { $("reset").disabled = false; onReset(); });
+    $("flash").addEventListener("click", () => { $("flash").disabled = false; onFlash(); });
+    $("over").addEventListener("click", () => { if (!busy) { samdStage = 0; goIdle(); } });
+    $("again").addEventListener("click", () => { if (!busy) { samdStage = 0; goIdle(); } });
+    $("back").addEventListener("click", backToProducts);
+
+    // ---------- boot ----------
     window.__updaterBooted = true;
-    $("reset").disabled = true;   // until the catalog is in
-    setHead("Ready to update", "Choose a firmware, then start.");
-    if ("serial" in navigator) loadCatalog();
+    if ("serial" in navigator) {
+      loadCatalog().then((data) => {
+        CATALOG = data;
+        renderProducts();
+        log(`Loaded ${CATALOG.products.length} product(s).`);
+      }).catch((err) => {
+        body.classList.remove("view-picker"); body.classList.add("view-flow");
+        setState("error");
+        setHead("Can’t load the product list", "Reload the page. If it keeps failing, contact support.", "err");
+        log("✗ " + (err.message || err));
+      });
+    }
   </script>
 </body>
 </html>

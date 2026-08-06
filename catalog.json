@@ -1,38 +1,101 @@
 {
-  "generated": "2026-07-21 20:44 UTC",
-  "product": "Margo Programmer Stick",
-  "firmwares": [
+  "generated": "2026-08-05 23:37 UTC",
+  "products": [
     {
       "id": "stick",
-      "label": "Programmer Stick (recommended)",
-      "note": "The standard firmware for customer programmer sticks.",
-      "default": true,
-      "warn": false,
-      "bin": "firmware/stick/app.bin",
-      "dat": "firmware/stick/app.dat",
-      "size": 172496,
-      "crc16": 4440,
-      "deviceType": 82,
-      "softDeviceReq": [
-        182
-      ],
-      "source": "MargoProgrammerStick.zip"
+      "name": "Programmer Stick",
+      "aka": "",
+      "board": "Adafruit Feather nRF52840",
+      "blurb": "Updates in your browser \u2014 nothing to install.",
+      "method": "nrf-dfu",
+      "firmwares": [
+        {
+          "id": "stick",
+          "label": "Programmer Stick (recommended)",
+          "note": "The standard firmware for customer programmer sticks.",
+          "default": true,
+          "warn": false,
+          "bin": "firmware/stick/app.bin",
+          "dat": "firmware/stick/app.dat",
+          "size": 172496,
+          "crc16": 4440,
+          "deviceType": 82,
+          "softDeviceReq": [
+            182
+          ],
+          "source": "MargoProgrammerStick.zip"
+        },
+        {
+          "id": "dev",
+          "label": "Developer build \u2014 internal use",
+          "note": "Unreleased build for internal testing. Not for customer units.",
+          "default": false,
+          "warn": true,
+          "bin": "firmware/dev/app.bin",
+          "dat": "firmware/dev/app.dat",
+          "size": 172720,
+          "crc16": 12335,
+          "deviceType": 82,
+          "softDeviceReq": [
+            182
+          ],
+          "source": "nrf-cannon-programmer_ino.zip"
+        }
+      ]
     },
     {
-      "id": "dev",
-      "label": "Developer build \u2014 internal use",
-      "note": "Unreleased build for internal testing. Not for customer units.",
-      "default": false,
-      "warn": true,
-      "bin": "firmware/dev/app.bin",
-      "dat": "firmware/dev/app.dat",
-      "size": 172720,
-      "crc16": 12335,
-      "deviceType": 82,
-      "softDeviceReq": [
-        182
+      "id": "avian-alarm",
+      "name": "Avian Alarm",
+      "aka": "formerly Squawk Box",
+      "board": "Arduino MKR Zero (SAMD21)",
+      "blurb": "Updates in your browser \u2014 nothing to install.",
+      "method": "samd-bossa",
+      "firmwares": [
+        {
+          "id": "avian-full",
+          "label": "Avian Alarm 1.5.1 (recommended)",
+          "note": "Clears the device memory, then installs firmware 1.5.1. Use this for a fresh unit or a clean reinstall.",
+          "default": true,
+          "warn": false,
+          "stages": [
+            {
+              "role": "wipe",
+              "label": "memory clear",
+              "bin": "firmware/avian-alarm/avian-full-wipe.bin",
+              "size": 13320,
+              "crc16": 47900,
+              "runMs": 4000
+            },
+            {
+              "role": "app",
+              "label": "firmware 1.5.1",
+              "bin": "firmware/avian-alarm/avian-full-app.bin",
+              "size": 73444,
+              "crc16": 40056
+            }
+          ],
+          "size": 86764
+        },
+        {
+          "id": "avian-app",
+          "label": "Avian Alarm 1.5.1 \u2014 firmware only (no memory clear)",
+          "note": "Installs firmware 1.5.1 without clearing stored data. Faster, for a device that's already set up.",
+          "default": false,
+          "warn": true,
+          "stages": [
+            {
+              "role": "app",
+              "label": "firmware 1.5.1",
+              "bin": "firmware/avian-alarm/avian-app-app.bin",
+              "size": 73444,
+              "crc16": 40056
+            }
+          ],
+          "size": 73444
+        }
       ],
-      "source": "nrf-cannon-programmer_ino.zip"
+      "flashOffset": 8192,
+      "fqbn": "arduino:samd:mkrzero"
     }
   ]
 }

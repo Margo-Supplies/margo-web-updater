@@ -1,23 +1,31 @@
-# Margo Programmer Stick — Web Firmware Updater
+# Margo Device Programmer — Web Firmware Updater
 
-A browser-based firmware updater for the Margo Programmer Stick (Adafruit
-Feather nRF52840). The customer opens a web page, plugs in the stick, picks a
-firmware from the menu, and clicks one button. Nothing is installed and no
-PowerShell is run — the update happens over the Web Serial API, entirely in the
-browser.
+A browser-based firmware updater for Margo hardware. The customer opens one web
+page, picks the **product** they're updating, plugs it in, chooses a firmware,
+and clicks a button. Nothing is installed and no PowerShell is run — every update
+happens over the Web Serial API, entirely in the browser.
 
-This replaces the old `MargoProgrammerUpdate.ps1` + `arduino-cli.exe` bundle.
+## Products
+
+| Product | Board | How it flashes |
+|---------|-------|----------------|
+| **Programmer Stick** | Adafruit Feather nRF52840 | Nordic legacy serial DFU (`dfu.js`) |
+| **Avian Alarm** *(formerly Squawk Box)* | Arduino MKR Zero (SAMD21) | Arduino SAM-BA / BOSSA protocol (`bossa.js`) |
+
+Adding the Avian Alarm replaces its old `SquawkBoxLoader` bundle
+(`arduino-cli.exe` + PowerShell). Same firmware, no download.
 
 ## Files
 
 | Path | Purpose |
 |------|---------|
-| `index.html` | The page the customer opens. |
-| `dfu.js` | The nRF52 serial DFU protocol (Adafruit nrfutil 0.5.x), ported to Web Serial. |
-| `catalog.json` | The firmware menu. **Generated — don't edit by hand.** |
-| `firmware/<id>/app.bin`, `app.dat` | The firmware images. **Generated.** |
-| `make_catalog.py` | Builds `catalog.json` + `firmware/` from DFU `.zip` packages. |
-| `packages/*.zip` | Your source DFU packages (inputs to the generator). |
+| `index.html` | The page the customer opens — product picker + flashing flow. |
+| `dfu.js` | nRF52 legacy serial DFU (Adafruit nrfutil 0.5.x), ported to Web Serial. |
+| `bossa.js` | Arduino SAMD21 SAM-BA / BOSSA flasher, ported to Web Serial. |
+| `catalog.json` | The product + firmware menu. **Generated — don't edit by hand.** |
+| `firmware/**` | The firmware images. **Generated.** |
+| `make_catalog.py` | Builds `catalog.json` + `firmware/` from the sources in `packages/`. |
+| `packages/**` | Source firmware (DFU `.zip`s for the stick, raw `.bin`s for the Avian Alarm). |
 
 ## Requirements for the customer
 
@@ -27,68 +35,47 @@ This replaces the old `MargoProgrammerUpdate.ps1` + `arduino-cli.exe` bundle.
 
 ## Changing the firmware menu
 
-Everything about the menu lives in the `SOURCES` list at the top of
-`make_catalog.py`:
+Everything about the menu lives in the `PRODUCTS` list at the top of
+`make_catalog.py`. Each product has a `method` (`nrf-dfu` or `samd-bossa`) and a
+list of firmwares.
 
-```python
-SOURCES = [
-    {
-        "id": "stick",                              # folder name + internal id
-        "label": "Programmer Stick (recommended)",  # what the customer sees
-        "note": "The standard firmware for customer programmer sticks.",
-        "zip": "packages/MargoProgrammerStick.zip",
-        "default": True,                            # preselected on page load
-        "warn": False,                              # True = amber caution style
-    },
-    ...
-]
-```
+- **nrf-dfu** firmwares point at a DFU `.zip` in `packages/` (app `.bin` + `.dat`
+  init packet). The build checks the image CRC against the init packet.
+- **samd-bossa** firmwares list one or more `stages`, each a raw application
+  `.bin` in `packages/`. A `wipe` stage (with `runMs`) runs before the main app,
+  mirroring the old two-step SquawkBoxLoader. Images are written at
+  `flashOffset` (0x2000 — the 8 KB bootloader is preserved).
 
-To **add an option**: drop the DFU `.zip` in `packages/`, add an entry, re-run.
-To **update an option**: replace the `.zip` (same filename) and re-run.
-To **remove one**: delete its entry and re-run.
+To rebuild after changing sources or the list:
 
 ```bash
 python3 make_catalog.py
 ```
 
 Then commit the regenerated `catalog.json` and `firmware/` folder and push.
-Exactly one entry must have `default: True`.
+Each product must have exactly one firmware with `default: True`.
 
-### Build-time safety checks
+## How each flow works
 
-`make_catalog.py` refuses to build, or warns loudly, when something is wrong:
+**Programmer Stick (nRF DFU).** Start update → pick the stick → the page sends a
+1200-baud "touch" that resets it into the Adafruit DFU bootloader → it reconnects
+as a new USB device, so the browser asks you to pick it again → the page verifies
+the image CRC16 and runs the DFU sequence (start, erase, init packet, 512-byte
+data packets, stop).
 
-- **CRC mismatch** — if a package's `.bin` and `.dat` don't belong together, the
-  build fails. The bootloader would reject that image anyway; better to catch it
-  before it ships.
-- **Different boards** — if the packages don't all target the same device type
-  and SoftDevice, it warns, because a customer could then pick an image their
-  board will refuse.
+**Avian Alarm (SAMD BOSSA).** For each stage: pick the device → the page sends a
+1200-baud touch that resets the MKR Zero into its Arduino SAM-BA bootloader → pick
+it again → the page runs the exact bossac sequence: `N`/`V` handshake, chip-erase
+from 0x2000 (`X`, so the bootloader survives), stage each 4 KB block into SRAM
+(`S`) and commit it to flash (`Y`), verify every block with the bootloader's CRC16
+(`Z`), then reset (`K`). The "with memory clear" firmware flashes the wipe sketch
+first, lets it run, then repeats for the main firmware.
 
-Both current packages target device type `0x0052` with SoftDevice `0xB6`, so any
-option is safe to flash onto any stick.
-
-## How it works
-
-The stick runs Adafruit's nRF52 bootloader, which accepts firmware over a serial
-(CDC) link using Nordic's legacy DFU protocol. The page:
-
-1. Loads `catalog.json` and builds the dropdown.
-2. **Start update** → the customer picks the stick → the page sends a
-   1200-baud "touch", which resets the board into its DFU bootloader. This is
-   the same trick `arduino-cli -t 1200` used, so no button press is needed.
-3. The board reconnects as a *new* USB device, so the browser asks the customer
-   to pick it once more — Web Serial grants permission per device, and there's
-   no way around this second prompt.
-4. **Continue** → the page downloads the selected `.bin`/`.dat`, verifies the
-   image's CRC16, then runs the DFU sequence: start packet (mode + image size),
-   flash-erase wait, init packet, 512-byte data packets, stop packet.
-
-The packet builder (SLIP framing, CRC16, sequence numbering) was verified
-byte-for-byte against Adafruit's original Python `dfu_transport_serial.py`, and
-the full flash loop was tested end-to-end against a mock bootloader that
-reassembles the image and checks every frame.
+`bossa.js` was written directly against Arduino's BOSSA 1.9.1 sources
+(`Samba.cpp`, `D2xNvmFlash.cpp`, `Flasher.cpp`, `Device.cpp`). The protocol layer
+is covered by an offline test against a mock SAM-BA bootloader, but the **first
+flash of a real Avian Alarm should be watched via the on-page Technical log** to
+confirm end-to-end behavior on hardware.
 
 ## Local testing
 
