@@ -375,7 +375,15 @@
       pre.insertAdjacentHTML("beforeend", `\n<span class="t">[${t}]</span> ${msg}`);
       pre.parentElement.scrollTop = pre.parentElement.scrollHeight;
     }
-    const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
+    // Revealing a button also re-enables it: onReset/onFlash disable the button
+    // they were fired from, and a multi-stage flash brings those buttons back for
+    // the next stage. A still-disabled button fires no click event at all, which
+    // dead-ends the flow.
+    const show = (id, on) => {
+      const el = $(id);
+      el.style.display = on ? "" : "none";
+      if (on) el.disabled = false;
+    };
 
     function fwSize(entry) {
       return entry.size != null ? entry.size
