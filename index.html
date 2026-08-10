@@ -317,9 +317,11 @@
         <summary><span class="chev">▸</span> Technical log</summary>
         <div class="logwrap"><pre id="log"><span class="t">[ready]</span> waiting for device…</pre></div>
         <p class="hint" id="advanced">
-          Each update has the device reconnect as a new USB device once it enters update mode,
-          so the browser asks you to pick it a second time before firmware is sent. If a list shows
-          more than one option, choose the one that appeared <b>after</b> the reset.
+          A device in update mode is a different USB device, so the browser needs your permission
+          for both — that's the two picks on a first run. If a list shows more than one option,
+          choose the one that appeared <b>after</b> the reset. Chrome and Edge keep those
+          permissions for this site, so later updates run without asking; to clear them, go to
+          <b>Settings → Privacy and security → Site settings → Serial ports</b>.
         </p>
       </details>
     </div>
@@ -438,18 +440,12 @@
     }
 
     function stepsFor(p) {
-      const name = p.name;
-      if (p.method === "samd-bossa") {
-        return [
-          `Plug the ${name} into a USB port on this computer.`,
-          `Click <b>Start update</b>. It switches itself into update mode — no buttons to press — then asks you to pick it.`,
-          `Pick it <b>once more</b> to send the firmware. Some updates run in two short steps; just follow the prompts.`,
-        ];
-      }
       return [
-        `Plug the ${name} into a USB port on this computer.`,
-        `Click <b>Start update</b> and pick the device. It switches itself into update mode — no buttons to press.`,
-        `When asked, pick it <b>one more time</b> to send the firmware. That second pick is the browser confirming the device.`,
+        `Plug the ${p.name} into a USB port on this computer.`,
+        `Click <b>Start update</b>. It switches itself into update mode — no buttons to press.`,
+        `The first time on this computer, the browser asks you to pick the device <b>twice</b> :
+         once as itself and once in update mode. After that it remembers, and every update
+         runs from the one click.`,
       ];
     }
 
@@ -476,6 +472,10 @@
       applySelection();
       goIdle();
       log(`Selected product: ${p.name} (${p.method}).`);
+      const known = loadKnown();
+      log(known[`${p.id}:app`] && known[`${p.id}:boot`]
+        ? "USB permissions for this device are already granted here — no picking needed."
+        : "First run on this computer: the browser will ask you to pick the device twice.");
     }
 
     function backToProducts() {
@@ -516,6 +516,77 @@
       catch { return null; } // chooser dismissed
     }
 
+    // ---------- remembering the ports the customer already approved ----------
+    // requestPort() grants persistent, per-origin permission for that one USB
+    // device; getPorts() hands those grants back with no dialog and — unlike
+    // requestPort() — no user gesture. A board running its sketch and the same
+    // board in its bootloader are two different USB devices, so each needs its
+    // own one-time grant. Once we have both, every later step (including the
+    // second stage of a wipe-then-install) can run without asking again.
+    const PORT_MEM = "margo.ports.v1";
+    const loadKnown = () => { try { return JSON.parse(localStorage.getItem(PORT_MEM)) || {}; } catch { return {}; } };
+    const saveKnown = (m) => { try { localStorage.setItem(PORT_MEM, JSON.stringify(m)); } catch (_) {} };
+    const appKey  = () => `${product.id}:app`;   // the port the sketch presents
+    const bootKey = () => `${product.id}:boot`;  // the port the bootloader presents
+
+    function sig(port) {
+      const i = port.getInfo ? port.getInfo() : {};
+      return (i.usbVendorId == null || i.usbProductId == null)
+        ? null : `${i.usbVendorId}:${i.usbProductId}`;
+    }
+    function remember(key, port) {
+      const s = sig(port);
+      if (!s) return;
+      const m = loadKnown(); m[key] = s; saveKnown(m);
+    }
+    // Any failure drops the grant we used, so the next attempt goes back through
+    // the chooser. That costs one dialog in the failure case and guarantees a
+    // stale or wrong grant can never wedge the flow.
+    function forget(key) {
+      const m = loadKnown();
+      if (m[key] != null) { delete m[key]; saveKnown(m); }
+    }
+    // One match, or nothing: two identical boards plugged in at once have to go
+    // through the chooser so the customer says which one they mean.
+    async function matchGranted(want) {
+      if (!want) return null;
+      const hits = (await navigator.serial.getPorts()).filter((p) => sig(p) === want);
+      return hits.length === 1 ? hits[0] : null;
+    }
+
+    async function acquirePort(key, purpose) {
+      // The localStorage read is synchronous and matchGranted resolves in
+      // milliseconds, so a first-time grant still reaches requestPort() well
+      // inside the click's transient activation window.
+      const known = await matchGranted(loadKnown()[key]);
+      if (known) { log(`Using the ${purpose} port already approved on this computer.`); return known; }
+      const port = await pickPort();
+      if (port) remember(key, port);
+      return port;
+    }
+
+    // Wait for an already-approved port to enumerate after a reset. Returns null
+    // when there's no grant for it yet or it never showed up — callers then fall
+    // back to asking. Bails out if the sketch and the bootloader report the same
+    // VID:PID, since then we can't tell which one we're looking at.
+    async function waitForGranted(key, timeoutMs, onTick) {
+      const known = loadKnown();
+      const want = known[key];
+      const other = known[key === bootKey() ? appKey() : bootKey()];
+      if (!want || want === other) return null;
+      const start = Date.now();
+      let shown = -1;
+      for (;;) {
+        const p = await matchGranted(want);
+        if (p) return p;
+        const left = timeoutMs - (Date.now() - start);
+        if (left <= 0) return null;
+        const secs = Math.ceil(left / 1000);
+        if (onTick && secs !== shown) onTick((shown = secs));
+        await sleep(250);
+      }
+    }
+
     async function countdown(totalMs, headTitle, statusFn) {
       let left = Math.round(totalMs / 1000);
       setHead(headTitle, statusFn(left));
@@ -532,8 +603,12 @@
     //  nRF52 DFU flow (Programmer Stick)
     // ======================================================================
     async function nrfReset() {
-      const port = await pickPort();
+      const port = await acquirePort(appKey(), "device");
       if (!port) { $("reset").disabled = false; busy = false; return; }
+      try { await nrfTouchAndGo(port); } finally { busy = false; }
+    }
+
+    async function nrfTouchAndGo(port) {
       $("fwselect").disabled = true;
       try {
         setState("wait");
@@ -542,20 +617,37 @@
         log("Selected device. Sending 1200-baud reset…");
         await touch1200(port);
         log("Reset sent. Waiting for it to reconnect in update mode…");
+        show("reset", false);
+
+        // Already approved the update-mode device on this computer? Then wait for
+        // it to enumerate and carry straight on — no chooser, no second click.
+        const boot = await waitForGranted(bootKey(), 8000,
+          (s) => setHead("Switching to update mode", `Almost ready… ${s}s`));
+        if (boot) {
+          log("Update-mode device found — continuing without asking.");
+          await nrfFlashWith(boot);
+          return;
+        }
+
         await countdown(4000, "Switching to update mode", (s) => `Almost ready… ${s}s`);
         setHead("Ready to send firmware", "Click Continue, then pick the device again.");
         log("Ready. Click Continue and choose the device from the list.");
-        show("reset", false); show("flash", true); show("over", true);
+        show("flash", true); show("over", true);
       } catch (err) {
+        forget(appKey());
         setState("error"); setHead("Couldn’t switch to update mode", err.message || String(err), "err");
         log("✗ " + (err.message || err));
-        $("fwselect").disabled = false; show("over", true);
-      } finally { busy = false; }
+        $("fwselect").disabled = false; show("reset", true); show("over", true);
+      }
     }
 
     async function nrfFlash() {
-      const port = await pickPort();
+      const port = await acquirePort(bootKey(), "update-mode");
       if (!port) { $("flash").disabled = false; busy = false; return; }
+      try { await nrfFlashWith(port); } finally { busy = false; }
+    }
+
+    async function nrfFlashWith(port) {
       try {
         setState("run"); setProgress(0);
         setHead("Preparing", "Getting the firmware ready…");
@@ -574,12 +666,13 @@
         log(`✓ ${selected.label} installed successfully.`);
         show("flash", false); show("over", false); show("again", true);
       } catch (err) {
+        forget(bootKey());
         setState("error"); setHead("Update failed", err.message || String(err), "err");
         log("✗ " + (err.message || err));
         try { await port.close(); } catch (_) {}
         $("flash").disabled = false; $("flash").textContent = "Try picking the device again";
         show("over", true);
-      } finally { busy = false; }
+      }
     }
 
     // ======================================================================
@@ -593,8 +686,12 @@
     }
 
     async function samdReset() {
-      const port = await pickPort();
+      const port = await acquirePort(appKey(), "device");
       if (!port) { $("reset").disabled = false; busy = false; return; }
+      try { await samdTouchAndGo(port); } finally { busy = false; }
+    }
+
+    async function samdTouchAndGo(port) {
       if (samdStage === 0) $("fwselect").disabled = true;
       try {
         setState("wait");
@@ -603,20 +700,37 @@
         log(`Sending 1200-baud reset for ${selected.stages[samdStage].role}…`);
         await touchSamd1200(port);
         log("Reset sent. Waiting for the bootloader to appear…");
+        show("reset", false);
+
+        // Already approved the bootloader port on this computer? Wait for it to
+        // enumerate and flash straight away — no chooser, no second click.
+        const boot = await waitForGranted(bootKey(), 10000,
+          (s) => setHead(stageLabel(), `Almost ready… ${s}s`));
+        if (boot) {
+          log("Update-mode port found — continuing without asking.");
+          await samdFlashWith(boot);
+          return;
+        }
+
         await countdown(5000, stageLabel(), (s) => `Almost ready… ${s}s`);
         setHead(stageLabel(), "Click Continue, then pick the device again.");
         $("flash").textContent = "Continue & send firmware";
-        show("reset", false); show("flash", true); show("over", true);
+        show("flash", true); show("over", true);
       } catch (err) {
+        forget(appKey());
         setState("error"); setHead("Couldn’t switch to update mode", err.message || String(err), "err");
         log("✗ " + (err.message || err));
-        $("fwselect").disabled = false; show("over", true);
-      } finally { busy = false; }
+        $("fwselect").disabled = false; show("reset", true); show("over", true);
+      }
     }
 
     async function samdFlash() {
-      const port = await pickPort();
+      const port = await acquirePort(bootKey(), "update-mode");
       if (!port) { $("flash").disabled = false; busy = false; return; }
+      try { await samdFlashWith(port); } finally { busy = false; }
+    }
+
+    async function samdFlashWith(port) {
       const stages = selected.stages;
       const st = stages[samdStage];
       const offset = product.flashOffset ?? 0x2000;
@@ -640,11 +754,21 @@
           // More stages to go. If this stage needs time to run (e.g. the memory
           // wipe), wait for it, then return to the reset phase for the next stage.
           const runMs = st.runMs || 0;
-          if (runMs) {
-            setState("wait");
-            await countdown(runMs, stageLabel(), (s) => `Letting the device finish… ${s}s`);
-          }
+          setState("wait"); show("flash", false);
+          if (runMs) await countdown(runMs, stageLabel(), (s) => `Letting the device finish… ${s}s`);
           samdStage++;
+
+          // The device is back in the sketch we just installed. If its port is
+          // already approved we can reset it into the bootloader ourselves, which
+          // is what turns the two-stage install into a single click.
+          const app = await waitForGranted(appKey(), 10000,
+            (s) => setHead(stageLabel(), `Waiting for the device… ${s}s`));
+          if (app) {
+            log("Device is back — starting the next step automatically.");
+            await samdTouchAndGo(app);
+            return;
+          }
+
           setState("idle"); setProgress(0);
           setHead(stageLabel(), "The device restarted. Click to switch it back to update mode.");
           $("reset").textContent = "Switch to update mode";
@@ -657,12 +781,13 @@
           show("flash", false); show("over", false); show("again", true);
         }
       } catch (err) {
+        forget(bootKey());
         setState("error"); setHead("Update failed", err.message || String(err), "err");
         log("✗ " + (err.message || err));
         try { await port.close(); } catch (_) {}
         $("flash").disabled = false; $("flash").textContent = "Try picking the device again";
         show("over", true);
-      } finally { busy = false; }
+      }
     }
 
     // ---------- button routing ----------

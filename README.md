@@ -71,6 +71,30 @@ from 0x2000 (`X`, so the bootloader survives), stage each 4 KB block into SRAM
 (`Z`), then reset (`K`). The "with memory clear" firmware flashes the wipe sketch
 first, lets it run, then repeats for the main firmware.
 
+### Why you only pick the device once (or not at all)
+
+A board running its sketch and the same board in its bootloader are two different
+USB devices, so Web Serial needs a separate permission grant for each. Those grants
+are persistent and per-origin, and `navigator.serial.getPorts()` returns them with
+no dialog **and no user gesture** — unlike `requestPort()`.
+
+So the page records each approved port's `usbVendorId:usbProductId` in
+`localStorage` (`margo.ports.v1`, keyed `<product>:app` and `<product>:boot`) and
+reuses it afterwards, polling `getPorts()` until the port reappears after a reset
+instead of asking again. Result:
+
+| | First run on a computer | Later runs |
+|---|---|---|
+| Firmware only (1 stage) | 2 picks | 0 picks |
+| With memory clear (2 stages) | 2 picks | 0 picks |
+
+The second stage of a two-stage install never prompts, because both grants already
+exist by then — it resets the device and flashes on its own. Fallbacks: if two
+identical boards are plugged in, or the sketch and bootloader report the same
+VID:PID, the page can't tell them apart and asks; and any failure drops the grant
+it used, so the next attempt goes back through the chooser. Customers can revoke
+grants under **Settings → Privacy and security → Site settings → Serial ports**.
+
 `bossa.js` was written directly against Arduino's BOSSA 1.9.1 sources
 (`Samba.cpp`, `D2xNvmFlash.cpp`, `Flasher.cpp`, `Device.cpp`). The protocol layer
 is covered by an offline test against a mock SAM-BA bootloader, but the **first
