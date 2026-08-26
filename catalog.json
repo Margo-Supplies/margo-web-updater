@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-05 23:37 UTC",
+  "generated": "2026-08-26 17:28 UTC",
   "products": [
     {
       "id": "stick",
@@ -53,8 +53,8 @@
       "firmwares": [
         {
           "id": "avian-full",
-          "label": "Avian Alarm 1.5.1 (recommended)",
-          "note": "Clears the device memory, then installs firmware 1.5.1. Use this for a fresh unit or a clean reinstall.",
+          "label": "Avian Alarm 1.5.2 (recommended)",
+          "note": "Clears the device memory, then installs firmware 1.5.2. Use this for a fresh unit or a clean reinstall.",
           "default": true,
           "warn": false,
           "stages": [
@@ -68,30 +68,48 @@
             },
             {
               "role": "app",
-              "label": "firmware 1.5.1",
+              "label": "firmware 1.5.2",
               "bin": "firmware/avian-alarm/avian-full-app.bin",
-              "size": 73444,
-              "crc16": 40056
+              "size": 107684,
+              "crc16": 59908
             }
           ],
-          "size": 86764
+          "size": 121004
         },
         {
           "id": "avian-app",
-          "label": "Avian Alarm 1.5.1 \u2014 firmware only (no memory clear)",
-          "note": "Installs firmware 1.5.1 without clearing stored data. Faster, for a device that's already set up.",
+          "label": "Avian Alarm 1.5.2 \u2014 firmware only (no memory clear)",
+          "note": "Installs firmware 1.5.2 without clearing stored data. Faster, for a device that's already set up.",
           "default": false,
           "warn": true,
           "stages": [
             {
               "role": "app",
-              "label": "firmware 1.5.1",
+              "label": "firmware 1.5.2",
               "bin": "firmware/avian-alarm/avian-app-app.bin",
-              "size": 73444,
-              "crc16": 40056
+              "size": 107684,
+              "crc16": 59908
             }
           ],
-          "size": 73444
+          "size": 107684
+        }
+      ],
+      "changelog": [
+        {
+          "version": "1.5.2",
+          "notes": [
+            "EXT OUT pin enabled: EXT OUT pin is now pulled high whenever sound is played, when users click Test EXT Output, and when Fire EXT mesh command is sent",
+            "Play counter added and is represented by Life Counter on the webapp. Can only be cleared by a Factory Reset",
+            "Boot Count stays in the testing build. This deployment build does not include Boot Count"
+          ]
+        },
+        {
+          "version": "1.5.1",
+          "notes": [
+            "Backwards compatibility bug fix",
+            "Schedule options match cannons",
+            "Settings and quiet times fix for XBee server usage"
+          ]
         }
       ],
       "flashOffset": 8192,

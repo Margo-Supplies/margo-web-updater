@@ -70,11 +70,35 @@ PRODUCTS = [
         # 8 KB Arduino SAMD bootloader; the application lives at 0x2000.
         "flashOffset": 0x2000,
         "fqbn": "arduino:samd:mkrzero",
+        # Newest first. Rendered as the "What's new" panel on the page; the first
+        # entry's version is treated as the one currently shipping.
+        "changelog": [
+            {
+                "version": "1.5.2",
+                "notes": [
+                    "EXT OUT pin enabled: EXT OUT pin is now pulled high whenever "
+                    "sound is played, when users click Test EXT Output, and when "
+                    "Fire EXT mesh command is sent",
+                    "Play counter added and is represented by Life Counter on the "
+                    "webapp. Can only be cleared by a Factory Reset",
+                    "Boot Count stays in the testing build. This deployment build "
+                    "does not include Boot Count",
+                ],
+            },
+            {
+                "version": "1.5.1",
+                "notes": [
+                    "Backwards compatibility bug fix",
+                    "Schedule options match cannons",
+                    "Settings and quiet times fix for XBee server usage",
+                ],
+            },
+        ],
         "firmwares": [
             {
                 "id": "avian-full",
-                "label": "Avian Alarm 1.5.1 (recommended)",
-                "note": "Clears the device memory, then installs firmware 1.5.1. "
+                "label": "Avian Alarm 1.5.2 (recommended)",
+                "note": "Clears the device memory, then installs firmware 1.5.2. "
                         "Use this for a fresh unit or a clean reinstall.",
                 "default": True,
                 "warn": False,
@@ -84,20 +108,20 @@ PRODUCTS = [
                 "stages": [
                     {"role": "wipe", "bin": "packages/avian-alarm/firmware_Wipe.bin",
                      "label": "memory clear", "runMs": 4000},
-                    {"role": "app", "bin": "packages/avian-alarm/SquawkBoxV1.5.1.bin",
-                     "label": "firmware 1.5.1"},
+                    {"role": "app", "bin": "packages/avian-alarm/SquawkBoxV1.5.2.bin",
+                     "label": "firmware 1.5.2"},
                 ],
             },
             {
                 "id": "avian-app",
-                "label": "Avian Alarm 1.5.1 — firmware only (no memory clear)",
-                "note": "Installs firmware 1.5.1 without clearing stored data. "
+                "label": "Avian Alarm 1.5.2 — firmware only (no memory clear)",
+                "note": "Installs firmware 1.5.2 without clearing stored data. "
                         "Faster, for a device that's already set up.",
                 "default": False,
                 "warn": True,
                 "stages": [
-                    {"role": "app", "bin": "packages/avian-alarm/SquawkBoxV1.5.1.bin",
-                     "label": "firmware 1.5.1"},
+                    {"role": "app", "bin": "packages/avian-alarm/SquawkBoxV1.5.2.bin",
+                     "label": "firmware 1.5.2"},
                 ],
             },
         ],
@@ -283,6 +307,8 @@ def main():
             "method": product["method"],
             "firmwares": fw_entries,
         }
+        if product.get("changelog"):
+            p["changelog"] = product["changelog"]
         if "flashOffset" in product:
             p["flashOffset"] = product["flashOffset"]
         if "fqbn" in product:
@@ -293,7 +319,9 @@ def main():
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "products": products,
     }
-    with open(CATALOG, "w") as f:
+    # newline="\n" keeps this LF on Windows too — otherwise a local rebuild
+    # rewrites every line of the file as a pure line-ending change.
+    with open(CATALOG, "w", encoding="utf-8", newline="\n") as f:
         json.dump(catalog, f, indent=2)
         f.write("\n")
 
